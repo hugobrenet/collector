@@ -200,3 +200,16 @@ custom_get_handlers = {"mycorp": ["rest_get_mycorp_custohandler"]}
 custom_delete_handlers = {"mycorp": ["rest_delete_mycorp_custohandler"]}
 custom_post_handlers = {"mycorp": ["rest_post_mycorp_custohandler"]}
 custom_put_handlers = {"mycorp": ["rest_put_mycorp_custohandler"]}
+
+# AI gateway integration
+# Disabled by default. When enabled, a successful web login creates a short-lived
+# gateway session using the submitted user credentials. The Collector stores only
+# the opaque gateway session id in the web2py session.
+ai_gateway_enabled = False
+ai_gateway_url = "http://127.0.0.1:8010"
+ai_gateway_internal_token = ""
+ai_gateway_sessions_endpoint = "/internal/v1/sessions"
+ai_gateway_request_timeout = 5
+# Defaults to session_expire when unset.
+ai_gateway_session_ttl = None
+ai_gateway_login_required = False
