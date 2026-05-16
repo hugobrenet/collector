@@ -31,6 +31,38 @@ def _json_request(url, payload, headers, timeout):
     return json.loads(response.read())
 
 
+def ai_gateway_chat(session, config_get, payload):
+    """Forward a Collector user prompt to the AI gateway chat endpoint."""
+    if not _as_bool(config_get("ai_gateway_enabled", False)):
+        raise AiGatewayError(503, "AI gateway is disabled")
+
+    gateway_url = config_get("ai_gateway_url", None)
+    endpoint = config_get("ai_gateway_chat_endpoint", "/api/v1/ai/chat")
+    timeout = config_get("ai_gateway_chat_timeout", 120)
+    session_id = getattr(session, "ai_gateway_session_id", None)
+
+    if not gateway_url:
+        raise AiGatewayError(503, "AI gateway url is not configured")
+    if not session_id:
+        raise AiGatewayError(401, "Missing AI gateway session")
+
+    url = gateway_url.rstrip("/") + "/" + endpoint.lstrip("/")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-OpenSVC-AI-Session": session_id,
+    }
+
+    try:
+        return _json_request(url, payload, headers, timeout)
+    except HTTPError as exc:
+        raise AiGatewayError(exc.code, _read_error_body(exc))
+    except URLError as exc:
+        raise AiGatewayError(502, "AI gateway request failed: %s" % exc)
+    except Exception as exc:
+        raise AiGatewayError(502, "AI gateway request failed: %s" % exc)
+
+
 def ai_gateway_login_onaccept(form, request, session, config_get):
     """Create a short-lived gateway session after a successful Collector login."""
     if not _as_bool(config_get("ai_gateway_enabled", False)):
@@ -94,3 +126,25 @@ def _handle_error(message, login_required):
     LOG.warning(message)
     if login_required:
         raise RuntimeError(message)
+
+
+class AiGatewayError(Exception):
+    def __init__(self, status_code, detail):
+        self.status_code = status_code
+        self.detail = detail
+        Exception.__init__(self, detail)
+
+
+def _read_error_body(exc):
+    try:
+        body = exc.read()
+    except Exception:
+        return "AI gateway request failed with HTTP %s" % exc.code
+    if not body:
+        return "AI gateway request failed with HTTP %s" % exc.code
+    try:
+        return json.loads(body)
+    except Exception:
+        if isinstance(body, bytes):
+            return body.decode("utf-8", "replace")
+        return body

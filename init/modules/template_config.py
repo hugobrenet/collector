@@ -209,7 +209,9 @@ ai_gateway_enabled = False
 ai_gateway_url = "http://127.0.0.1:8010"
 ai_gateway_internal_token = ""
 ai_gateway_sessions_endpoint = "/internal/v1/sessions"
+ai_gateway_chat_endpoint = "/api/v1/ai/chat"
 ai_gateway_request_timeout = 5
+ai_gateway_chat_timeout = 120
 # Defaults to session_expire when unset.
 ai_gateway_session_ttl = None
 ai_gateway_login_required = False
