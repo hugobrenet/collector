@@ -12,6 +12,9 @@ def get_get_handlers(prefix=None):
        "api": [
              "rest_get_api",
        ],
+       "ai": [
+             "rest_get_ai_llm_config",
+       ],
        "actions": [
              "rest_get_action_queue",
              "rest_get_action_queue_stats",
@@ -919,6 +922,5 @@ def get_put_handlers(prefix=None):
     for l in _handlers.values():
         data += [globals()[h]() for h in l]
     return data
-
 
 

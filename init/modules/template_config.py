@@ -213,3 +213,18 @@ ai_gateway_request_timeout = 5
 # Defaults to session_expire when unset.
 ai_gateway_session_ttl = None
 ai_gateway_login_required = False
+
+# AI LLM orchestration config returned to the gateway by:
+# GET /init/rest/api/ai/llm/config
+# The endpoint requires both user authentication and X-OpenSVC-Gateway-Token
+# matching ai_gateway_internal_token.
+ai_llm_provider = "openai_compatible"
+ai_llm_base_url = ""
+ai_llm_model = ""
+ai_llm_api_key = ""
+ai_llm_system_prompt = ""
+ai_llm_temperature = None
+ai_llm_max_tokens = None
+ai_llm_completion_token_parameter = "max_completion_tokens"
+ai_llm_max_tool_iterations = 5
+ai_llm_tool_result_max_chars = 20000
