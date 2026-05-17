@@ -781,6 +781,21 @@ db.define_table('user_prefs',
     Field('prefs', 'text'),
     migrate=False)
 
+db.define_table('ai_llm_user_config',
+    Field('id', 'integer'),
+    Field('user_id', 'integer'),
+    Field('provider', 'string', length=64),
+    Field('base_url', 'string', length=512),
+    Field('model', 'string', length=128),
+    Field('api_key', 'text'),
+    Field('temperature', 'double'),
+    Field('max_tokens', 'integer'),
+    Field('completion_token_parameter', 'string', length=64),
+    Field('max_tool_iterations', 'integer'),
+    Field('tool_result_max_chars', 'integer'),
+    Field('updated', 'datetime'),
+    migrate=False)
+
 db.define_table('v_comp_modulesets',
     Field('modset_id','integer'),
     Field('modset_name','string'),
@@ -2040,4 +2055,3 @@ db.define_table('clusters',
     Field('cluster_name', 'string'),
     Field('cluster_data','json'),
     migrate=False)
-

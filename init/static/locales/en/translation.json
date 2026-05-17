@@ -1550,6 +1550,8 @@
 		"logout_text": "Reconnect as another user",
 		"edit_title": "Edit Profile",
 		"edit_text": "User name, alerting levels...",
+		"ai_llm_config_title": "AI LLM configuration",
+		"ai_llm_config_text": "LLM endpoint, model, and API key",
 		"change_title": "Change Password",
 		"change_text": "You need to know your current password"
 	},

@@ -7009,6 +7009,25 @@ alter table svcmon modify column mon_appstatus enum('up','down','warn','n/a','un
 alter table svcmon modify column mon_hbstatus enum('up','down','warn','n/a','undef','stdby up','stdby down') default "undef";
 alter table svcmon modify column mon_availstatus enum('up','down','warn','n/a','undef','stdby up','stdby down') default "undef";
 
+-- 2026-05-17
+
+CREATE TABLE IF NOT EXISTS `ai_llm_user_config` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `provider` varchar(64) DEFAULT 'openai_compatible',
+  `base_url` varchar(512) DEFAULT NULL,
+  `model` varchar(128) DEFAULT NULL,
+  `api_key` text DEFAULT NULL,
+  `temperature` double DEFAULT NULL,
+  `max_tokens` int(11) DEFAULT NULL,
+  `completion_token_parameter` varchar(64) DEFAULT 'max_completion_tokens',
+  `max_tool_iterations` int(11) DEFAULT 5,
+  `tool_result_max_chars` int(11) DEFAULT 20000,
+  `updated` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ai_llm_user_config_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
 
 -- 2025-01-22
 

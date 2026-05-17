@@ -1549,6 +1549,8 @@
 		"logout_text" : "Se reconnecter en temps qu'un autre utilisateur",
 		"edit_title" : "Edition du profil",
 		"edit_text" : "Nom de l'utilisateur, seuils de déclenchement des alertes, ...",
+		"ai_llm_config_title" : "Configuration LLM AI",
+		"ai_llm_config_text" : "Endpoint LLM, modèle et clé API",
 		"change_title": "Changer le mot de passe",
 		"change_text" : "Vous devez connaitre votre mot de passe actuel"
 	},

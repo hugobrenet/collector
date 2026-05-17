@@ -1,3 +1,9 @@
+from applications.init.modules.ai_llm_config import (
+    ai_llm_gateway_config,
+    ai_llm_user_row,
+)
+
+
 class rest_get_ai_llm_config(rest_get_handler):
     def __init__(self):
         desc = [
@@ -16,29 +22,14 @@ class rest_get_ai_llm_config(rest_get_handler):
     def handler(self, **vars):
         _require_ai_gateway_token()
 
-        base_url = config_get("ai_llm_base_url", "")
-        model = config_get("ai_llm_model", "")
-        if not base_url or not model:
+        data = ai_llm_gateway_config(ai_llm_user_row(db, auth.user_id))
+        if data is None:
             raise HTTP(
               503,
-              "AI LLM config is incomplete: ai_llm_base_url and ai_llm_model are required",
+              "AI LLM config is not configured for this user",
             )
 
-        return dict(data={
-          "provider": config_get("ai_llm_provider", "openai_compatible"),
-          "base_url": base_url,
-          "model": model,
-          "api_key": config_get("ai_llm_api_key", None) or None,
-          "system_prompt": config_get("ai_llm_system_prompt", ""),
-          "temperature": config_get("ai_llm_temperature", None),
-          "max_tokens": config_get("ai_llm_max_tokens", None),
-          "completion_token_parameter": config_get(
-            "ai_llm_completion_token_parameter",
-            "max_completion_tokens",
-          ),
-          "max_tool_iterations": config_get("ai_llm_max_tool_iterations", 5),
-          "tool_result_max_chars": config_get("ai_llm_tool_result_max_chars", 20000),
-        })
+        return dict(data=data)
 
 
 def _require_ai_gateway_token():

@@ -1,1 +1,1 @@
-code_rev="60fc71102905f8d32d841a0266de8089ba545e55"
+code_rev="ai-llm-config-simple-form-20260517"

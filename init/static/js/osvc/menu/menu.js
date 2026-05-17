@@ -881,5 +881,3 @@ function menu_create_entry_s(section, entry)
 	div_entry +="</div></div></div>";
 	return div_entry;
 }
-
-
