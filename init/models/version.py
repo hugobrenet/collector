@@ -1,1 +1,1 @@
-code_rev="ai-llm-config-simple-form-20260517"
+code_rev="ai-chatbot-view-20260518-2"

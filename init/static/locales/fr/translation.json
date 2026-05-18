@@ -1256,6 +1256,10 @@
 				"title" : "Pilotage",
 				"text" : "Problèmes actuels sur les nœuds et services"
 			},
+			"ai_assistant" : {
+				"title" : "Assistant IA",
+				"text" : "Interroger l'infrastructure OpenSVC"
+			},
 			"application" : {
 				"title" : "Applications",
 				"text" : "Codes applicatifs assignés aux noeuds et aux services"

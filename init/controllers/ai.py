@@ -19,6 +19,11 @@ except NameError:
 
 
 @auth.requires_login()
+def chatbot():
+    return dict()
+
+
+@auth.requires_login()
 def chat():
     response.headers["Content-Type"] = "application/json"
 

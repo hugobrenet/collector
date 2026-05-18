@@ -8,6 +8,14 @@ var menu_data = {
 		  "fn" : "table_dashboard"
 		},
 		{
+		  "title" : "ai_assistant",
+		  "label" : "AI Assistant",
+		  "text" : "Ask questions about the OpenSVC infrastructure",
+		  "class" : "fa-comment",
+		  "id" : "view-ai-assistant",
+		  "link" : "/init/ai/chatbot"
+		},
+		{
 		  "title" : "application",
 		  "class" : "app16",
 		  "id" : "view-app",
@@ -691,7 +699,11 @@ function menu(divid) {
 			for (i=0; i<section.length; i++) {
 				var entry = section[i]
 				if (entry.link == window.location.pathname) {
-					var title = i18n.t("menu."+d+ "." + entry.title +".title")
+					var title_key = "menu."+d+ "." + entry.title +".title"
+					var title = i18n.t(title_key)
+					if ((title == title_key) && entry.label) {
+						title = entry.label
+					}
 					o.set_title(title)
 				}
 			}
@@ -856,8 +868,17 @@ function menu(divid) {
 
 function menu_create_entry_s(section, entry)
 {
-	var titre = i18n.t("menu."+section+ "." + entry.title +".title");
-	var text = i18n.t("menu."+section+ "." + entry.title +".text");
+	var title_key = "menu."+section+ "." + entry.title +".title";
+	var text_key = "menu."+section+ "." + entry.title +".text";
+	var titre = i18n.t(title_key);
+	var text = i18n.t(text_key);
+
+	if ((titre == title_key) && entry.label) {
+		titre = entry.label;
+	}
+	if ((text == text_key) && entry.text) {
+		text = entry.text;
+	}
 
 	var div_entry = "<div id='menu_" + section + "_" + entry.title + "' class='menu_entry clickable' link='" + entry.link + "' fn='" + entry.fn + "'>";
 

@@ -1,0 +1,246 @@
+{{extend 'layout.html'}}
+
+<style>
+.ai-chatbot {
+	margin: 1em;
+	max-width: 1100px;
+}
+.ai-chatbot > h2 {
+	margin: 0 0 0.8em 0;
+}
+.ai-chatbox {
+	background: #fff;
+	border: 1px solid lightgray;
+	border-radius: 3px;
+	box-shadow: inset 0 1px 0 rgba(0,0,0,0.05);
+}
+.ai-chatbox-header {
+	background: #2d2d2d;
+	color: whitesmoke;
+	padding: 0.7em 1em;
+	font-weight: bold;
+}
+.ai-chatbox-body {
+	padding: 1em;
+}
+.ai-chat-messages {
+	min-height: 18em;
+	max-height: 55vh;
+	overflow-y: auto;
+	background: #fafaf4;
+	border: 1px solid #ddd;
+	padding: 0.8em;
+}
+.ai-chat-message {
+	margin-bottom: 0.8em;
+}
+.ai-chat-message-label {
+	color: #555;
+	font-weight: bold;
+	margin-bottom: 0.2em;
+}
+.ai-chat-message-content {
+	white-space: pre-wrap;
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 0.7em;
+}
+.ai-chat-message.assistant .ai-chat-message-content {
+	background: #E5FFE5;
+}
+.ai-chat-form {
+	display: flex;
+	gap: 0.8em;
+	margin-top: 1em;
+	align-items: flex-end;
+}
+.ai-chat-form textarea {
+	flex: 1 1 auto;
+	min-height: 6em;
+	resize: vertical;
+	border: 1px solid lightgray;
+	border-radius: 3px;
+	padding: 0.7em;
+	font-family: inherit;
+}
+.ai-chat-form button {
+	background: #2d2d2d;
+	color: whitesmoke;
+	border: 1px solid #1f1f1f;
+	border-radius: 3px;
+	padding: 0.7em 1.2em;
+	min-width: 8em;
+}
+.ai-chat-form button:disabled {
+	background: #888;
+	border-color: #777;
+}
+.ai-chat-error {
+	display: none;
+	margin-top: 1em;
+}
+.ai-chat-status {
+	color: #555;
+	margin-top: 0.7em;
+	min-height: 1.3em;
+}
+@media (max-width: 700px) {
+	.ai-chat-form {
+		display: block;
+	}
+	.ai-chat-form button {
+		margin-top: 0.7em;
+		width: 100%;
+	}
+}
+</style>
+
+<div class="ai-chatbot">
+	<h2>{{=T("AI Assistant")}}</h2>
+	<div class="ai-chatbox">
+		<div class="ai-chatbox-header">{{=T("OpenSVC AI chatbot")}}</div>
+		<div class="ai-chatbox-body">
+			<div id="ai-chat-messages" class="ai-chat-messages"></div>
+			<form id="ai-chat-form" class="ai-chat-form">
+				<textarea id="ai-chat-input" placeholder="{{=T('Ask a question about your OpenSVC environment')}}"></textarea>
+				<button id="ai-chat-submit" type="submit">{{=T("Send")}}</button>
+			</form>
+			<div id="ai-chat-status" class="ai-chat-status"></div>
+			<div id="ai-chat-error" class="error ai-chat-error"></div>
+		</div>
+	</div>
+</div>
+
+<script>
+(function() {
+	var history = [];
+	var form = $("#ai-chat-form");
+	var input = $("#ai-chat-input");
+	var button = $("#ai-chat-submit");
+	var messages = $("#ai-chat-messages");
+	var status = $("#ai-chat-status");
+	var error = $("#ai-chat-error");
+
+	function appendMessage(role, text) {
+		var msg = $("<div>").addClass("ai-chat-message").addClass(role);
+		var label = $("<div>").addClass("ai-chat-message-label");
+		var content = $("<div>").addClass("ai-chat-message-content");
+		label.text(role == "user" ? "{{=T('You')}}" : "{{=T('Assistant')}}");
+		content.text(text);
+		msg.append(label).append(content);
+		messages.append(msg);
+		messages.scrollTop(messages.prop("scrollHeight"));
+	}
+
+	function setBusy(isBusy) {
+		button.prop("disabled", isBusy);
+		input.prop("disabled", isBusy);
+		status.text(isBusy ? "{{=T('Waiting for LLM response...')}}" : "");
+	}
+
+	function responseText(data) {
+		if (!data) {
+			return "";
+		}
+		if (data.message) {
+			return data.message;
+		}
+		if (data.data && data.data.message) {
+			return data.data.message;
+		}
+		if (data.data && data.data.answer) {
+			return data.data.answer;
+		}
+		if (data.data && data.data.response) {
+			return data.data.response;
+		}
+		if (data.answer) {
+			return data.answer;
+		}
+		if (data.response) {
+			return data.response;
+		}
+		if (data.error) {
+			return valueText(data.error);
+		}
+		return valueText(data);
+	}
+
+	function valueText(value) {
+		if (value === null || value === undefined) {
+			return "";
+		}
+		if (typeof value === "string") {
+			return value;
+		}
+		if (value.message) {
+			return valueText(value.message);
+		}
+		if (value.detail) {
+			return valueText(value.detail);
+		}
+		if (value.error) {
+			return valueText(value.error);
+		}
+		try {
+			return JSON.stringify(value, null, 2);
+		} catch (e) {
+			return String(value);
+		}
+	}
+
+	function errorText(xhr) {
+		var fallback = "{{=T('The AI request failed.')}}";
+		if (!xhr || !xhr.responseText) {
+			return fallback;
+		}
+		try {
+			var data = JSON.parse(xhr.responseText);
+			return valueText(data.error || data.detail || data) || fallback;
+		} catch (e) {
+			return xhr.responseText || fallback;
+		}
+	}
+
+	form.on("submit", function(event) {
+		event.preventDefault();
+		var message = $.trim(input.val());
+		if (!message) {
+			input.focus();
+			return;
+		}
+
+		error.hide().text("");
+		appendMessage("user", message);
+		input.val("");
+		setBusy(true);
+
+		$.ajax({
+			url: "{{=URL('ai', 'chat')}}",
+			method: "POST",
+			contentType: "application/json",
+			dataType: "json",
+			data: JSON.stringify({
+				message: message,
+				history: history
+			}),
+			success: function(data) {
+				var answer = responseText(data);
+				appendMessage("assistant", answer);
+				history.push({role: "user", content: message});
+				history.push({role: "assistant", content: answer});
+			},
+			error: function(xhr) {
+				error.text(errorText(xhr)).show();
+			},
+			complete: function() {
+				setBusy(false);
+				input.focus();
+			}
+		});
+	});
+
+	input.focus();
+})();
+</script>

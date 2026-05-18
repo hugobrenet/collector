@@ -88,7 +88,7 @@ function i18n_init(callback) {
 		getAsync : true,
 		fallbackLng: 'en',
 		load:'unspecific',
-		resGetPath: "/"+osvc.app+"/static/locales/__lng__/__ns__.json",
+		resGetPath: "/"+osvc.app+"/static/locales/__lng__/__ns__.json?v="+osvc.code_rev,
 		ns: {
 			namespaces: ['translation'],
 			defaultNs: 'translation'
@@ -204,7 +204,9 @@ function init_requirejs() {
 
 function app_start() {
 	load_user()
-	i18n_init()
+	osvc.user_loaded.done(function() {
+		i18n_init()
+	})
 	osvc.flash = flash()
 
 	// Check if IE and version < 10
@@ -1130,5 +1132,3 @@ function forms() {
 		forms()
 	})
 }
-
-
