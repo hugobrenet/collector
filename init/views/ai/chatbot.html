@@ -108,6 +108,45 @@
 	margin: 0.4em 0 0.7em 1.6em;
 	padding: 0;
 }
+.ai-chat-tools {
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	margin-top: 0.4em;
+	padding: 0.55em 0.7em;
+}
+.ai-chat-tools summary {
+	cursor: pointer;
+	font-weight: bold;
+}
+.ai-chat-tool {
+	border-top: 1px solid #ddd;
+	margin-top: 0.5em;
+	padding-top: 0.5em;
+}
+.ai-chat-tool-name {
+	font-weight: bold;
+}
+.ai-chat-tool-status {
+	color: #555;
+	margin-left: 0.5em;
+}
+.ai-chat-tool-status.ok {
+	color: #247424;
+}
+.ai-chat-tool-status.error {
+	color: #9a1f1f;
+}
+.ai-chat-tool pre {
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	margin: 0.4em 0 0 0;
+	max-height: 16em;
+	overflow: auto;
+	padding: 0.55em;
+	white-space: pre;
+}
 .ai-chat-form {
 	display: flex;
 	gap: 0.8em;
@@ -181,7 +220,7 @@
 	var status = $("#ai-chat-status");
 	var error = $("#ai-chat-error");
 
-	function appendMessage(role, text) {
+	function appendMessage(role, text, toolCalls) {
 		var msg = $("<div>").addClass("ai-chat-message").addClass(role);
 		var label = $("<div>").addClass("ai-chat-message-label");
 		var content = $("<div>").addClass("ai-chat-message-content");
@@ -192,8 +231,107 @@
 			content.text(text);
 		}
 		msg.append(label).append(content);
+		if (role == "assistant") {
+			appendToolCalls(msg, toolCalls);
+		}
 		messages.append(msg);
 		messages.scrollTop(messages.prop("scrollHeight"));
+	}
+
+	function appendToolCalls(message, toolCalls) {
+		var normalized = normalizeCollectorToolCalls(toolCalls);
+		if (normalized.length === 0) {
+			return;
+		}
+
+		var details = $("<details>").addClass("ai-chat-tools");
+		var summary = $("<summary>");
+		summary.text(
+			normalized.length == 1 ?
+			"Collector tool used" :
+			"Collector tools used (" + normalized.length + ")"
+		);
+		details.append(summary);
+
+		$.each(normalized, function(_, tool) {
+			var item = $("<div>").addClass("ai-chat-tool");
+			var name = $("<span>").addClass("ai-chat-tool-name");
+			var status = $("<span>").addClass("ai-chat-tool-status");
+			var args = $("<pre>");
+
+			name.text(tool.name);
+			status.addClass(tool.ok ? "ok" : "error");
+			status.text(tool.ok ? "ok" : "error");
+			args.text(valueText(sanitizeToolArguments(tool.arguments)));
+
+			item.append(name).append(status).append(args);
+			details.append(item);
+		});
+
+		message.append(details);
+	}
+
+	function normalizeCollectorToolCalls(toolCalls) {
+		var normalized = [];
+		if (!$.isArray(toolCalls)) {
+			return normalized;
+		}
+
+		$.each(toolCalls, function(_, toolCall) {
+			var args;
+			var collectorToolName;
+			var collectorToolArgs;
+
+			if (!toolCall || typeof toolCall != "object") {
+				return;
+			}
+			args = toolCall.arguments || {};
+			if (toolCall.name == "search_tools") {
+				return;
+			}
+			if (toolCall.name == "call_tool") {
+				collectorToolName = args.name;
+				collectorToolArgs = args.arguments || {};
+				if (!collectorToolName) {
+					return;
+				}
+				normalized.push({
+					name: collectorToolName,
+					arguments: collectorToolArgs,
+					ok: toolCall.ok !== false
+				});
+				return;
+			}
+			normalized.push({
+				name: toolCall.name || "unknown_tool",
+				arguments: args,
+				ok: toolCall.ok !== false
+			});
+		});
+
+		return normalized;
+	}
+
+	function sanitizeToolArguments(value) {
+		var sensitive = /token|password|passwd|secret|api[_-]?key|authorization/i;
+
+		if ($.isArray(value)) {
+			return $.map(value, function(item) {
+				return sanitizeToolArguments(item);
+			});
+		}
+		if (value && typeof value == "object") {
+			var clean = {};
+			$.each(value, function(key, item) {
+				if (sensitive.test(key)) {
+					clean[key] = "***";
+				} else {
+					clean[key] = sanitizeToolArguments(item);
+				}
+			});
+			return clean;
+		}
+		return value;
 	}
 
 	function renderAssistantMessage(content, text) {
@@ -510,6 +648,19 @@
 		return valueText(data);
 	}
 
+	function responseToolCalls(data) {
+		if (!data) {
+			return [];
+		}
+		if ($.isArray(data.tool_calls)) {
+			return data.tool_calls;
+		}
+		if (data.data && $.isArray(data.data.tool_calls)) {
+			return data.data.tool_calls;
+		}
+		return [];
+	}
+
 	function valueText(value) {
 		if (value === null || value === undefined) {
 			return "";
@@ -570,7 +721,7 @@
 			}),
 			success: function(data) {
 				var answer = responseText(data);
-				appendMessage("assistant", answer);
+				appendMessage("assistant", answer, responseToolCalls(data));
 				history.push({role: "user", content: message});
 				history.push({role: "assistant", content: answer});
 			},
