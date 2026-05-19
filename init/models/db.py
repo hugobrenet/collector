@@ -87,10 +87,19 @@ auth.settings.register_onaccept = [lambda form: auth_register_callback(form)]
 auth.settings.formstyle = "bootstrap3_inline"
 
 if config_get("ai_gateway_enabled", False):
-    from applications.init.modules.ai_gateway import ai_gateway_login_onaccept
+    from applications.init.modules.ai_gateway import (
+      ai_gateway_login_onaccept,
+      ai_gateway_logout_onlogout,
+    )
     login_onaccept = getattr(auth.settings, "login_onaccept", []) or []
     login_onaccept.append(lambda form: ai_gateway_login_onaccept(form, request, session, config_get))
     auth.settings.login_onaccept = login_onaccept
+    logout_onlogout = getattr(auth.settings, "logout_onlogout", None)
+    def _ai_gateway_logout_onlogout(user):
+        if logout_onlogout:
+            logout_onlogout(user)
+        ai_gateway_logout_onlogout(user, session, config_get)
+    auth.settings.logout_onlogout = _ai_gateway_logout_onlogout
 login_form_username = False
 
 if config_get("allow_register", False):
