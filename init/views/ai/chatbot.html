@@ -40,14 +40,73 @@
 	margin-bottom: 0.2em;
 }
 .ai-chat-message-content {
-	white-space: pre-wrap;
 	background: #fff;
 	border: 1px solid #ddd;
 	border-radius: 3px;
 	padding: 0.7em;
 }
+.ai-chat-message.user .ai-chat-message-content {
+	white-space: pre-wrap;
+}
 .ai-chat-message.assistant .ai-chat-message-content {
 	background: #E5FFE5;
+	white-space: pre-wrap;
+}
+.ai-chat-message.assistant .ai-chat-message-content.rendered {
+	white-space: normal;
+}
+.ai-chat-message.assistant .ai-chat-message-content p {
+	margin: 0.4em 0;
+}
+.ai-chat-message.assistant .ai-chat-message-content h1,
+.ai-chat-message.assistant .ai-chat-message-content h2,
+.ai-chat-message.assistant .ai-chat-message-content h3,
+.ai-chat-message.assistant .ai-chat-message-content h4 {
+	margin: 0.8em 0 0.4em 0;
+}
+.ai-chat-message.assistant .ai-chat-message-content h1:first-child,
+.ai-chat-message.assistant .ai-chat-message-content h2:first-child,
+.ai-chat-message.assistant .ai-chat-message-content h3:first-child,
+.ai-chat-message.assistant .ai-chat-message-content h4:first-child,
+.ai-chat-message.assistant .ai-chat-message-content p:first-child {
+	margin-top: 0;
+}
+.ai-chat-message.assistant .ai-chat-message-content table {
+	border-collapse: collapse;
+	margin: 0.8em 0;
+	width: 100%;
+}
+.ai-chat-message.assistant .ai-chat-message-content th,
+.ai-chat-message.assistant .ai-chat-message-content td {
+	border: 1px solid #b7d6b7;
+	padding: 0.4em 0.55em;
+	text-align: left;
+	vertical-align: top;
+}
+.ai-chat-message.assistant .ai-chat-message-content th {
+	background: #d2f0d2;
+}
+.ai-chat-message.assistant .ai-chat-message-content code {
+	background: rgba(0,0,0,0.08);
+	border-radius: 3px;
+	padding: 0.05em 0.25em;
+}
+.ai-chat-message.assistant .ai-chat-message-content pre {
+	background: rgba(0,0,0,0.08);
+	border: 1px solid #b7d6b7;
+	border-radius: 3px;
+	overflow-x: auto;
+	padding: 0.7em;
+	white-space: pre;
+}
+.ai-chat-message.assistant .ai-chat-message-content pre code {
+	background: transparent;
+	padding: 0;
+}
+.ai-chat-message.assistant .ai-chat-message-content ul,
+.ai-chat-message.assistant .ai-chat-message-content ol {
+	margin: 0.4em 0 0.7em 1.6em;
+	padding: 0;
 }
 .ai-chat-form {
 	display: flex;
@@ -127,10 +186,294 @@
 		var label = $("<div>").addClass("ai-chat-message-label");
 		var content = $("<div>").addClass("ai-chat-message-content");
 		label.text(role == "user" ? "{{=T('You')}}" : "{{=T('Assistant')}}");
-		content.text(text);
+		if (role == "assistant") {
+			renderAssistantMessage(content, text);
+		} else {
+			content.text(text);
+		}
 		msg.append(label).append(content);
 		messages.append(msg);
 		messages.scrollTop(messages.prop("scrollHeight"));
+	}
+
+	function renderAssistantMessage(content, text) {
+		content.html(sanitizeMarkdownHtml(renderMarkdown(text)));
+		content.addClass("rendered");
+	}
+
+	function escapeHtml(text) {
+		return String(text).replace(/[&<>"']/g, function(chr) {
+			return {
+				"&": "&amp;",
+				"<": "&lt;",
+				">": "&gt;",
+				"\"": "&quot;",
+				"'": "&#39;"
+			}[chr];
+		});
+	}
+
+	function renderMarkdown(text) {
+		var lines = escapeHtml(text).split(/\r?\n/);
+		var html = [];
+		var paragraph = [];
+		var i = 0;
+
+		function flushParagraph() {
+			if (paragraph.length === 0) {
+				return;
+			}
+			html.push("<p>" + renderInlineMarkdown(paragraph.join(" ")) + "</p>");
+			paragraph = [];
+		}
+
+		while (i < lines.length) {
+			var line = lines[i];
+			var trimmed = $.trim(line);
+			var heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+
+			if (trimmed === "") {
+				flushParagraph();
+				i += 1;
+				continue;
+			}
+
+			if (/^```/.test(trimmed)) {
+				var code = [];
+				flushParagraph();
+				i += 1;
+				while (i < lines.length && !/^```/.test($.trim(lines[i]))) {
+					code.push(lines[i]);
+					i += 1;
+				}
+				if (i < lines.length) {
+					i += 1;
+				}
+				html.push("<pre><code>" + code.join("\n") + "</code></pre>");
+				continue;
+			}
+
+			if (isTableHeader(lines, i)) {
+				var headers = splitTableRow(lines[i]);
+				var rows = [];
+				flushParagraph();
+				i += 2;
+
+				while (i < lines.length && isTableRow(lines[i], headers.length)) {
+					rows.push(splitTableRow(lines[i]));
+					i += 1;
+				}
+
+				html.push(buildTableHtml(headers, rows));
+				continue;
+			}
+
+			if (heading) {
+				var level = heading[1].length;
+				flushParagraph();
+				html.push(
+					"<h" + level + ">" +
+					renderInlineMarkdown(heading[2]) +
+					"</h" + level + ">"
+				);
+				i += 1;
+				continue;
+			}
+
+			if (/^[-*]\s+/.test(trimmed)) {
+				flushParagraph();
+				html.push("<ul>");
+				while (i < lines.length && /^[-*]\s+/.test($.trim(lines[i]))) {
+					html.push(
+						"<li>" +
+						renderInlineMarkdown($.trim(lines[i]).replace(/^[-*]\s+/, "")) +
+						"</li>"
+					);
+					i += 1;
+				}
+				html.push("</ul>");
+				continue;
+			}
+
+			if (/^\d+\.\s+/.test(trimmed)) {
+				flushParagraph();
+				html.push("<ol>");
+				while (i < lines.length && /^\d+\.\s+/.test($.trim(lines[i]))) {
+					html.push(
+						"<li>" +
+						renderInlineMarkdown($.trim(lines[i]).replace(/^\d+\.\s+/, "")) +
+						"</li>"
+					);
+					i += 1;
+				}
+				html.push("</ol>");
+				continue;
+			}
+
+			if (/^>\s+/.test(trimmed)) {
+				var quote = [];
+				flushParagraph();
+				while (i < lines.length && /^>\s+/.test($.trim(lines[i]))) {
+					quote.push($.trim(lines[i]).replace(/^>\s+/, ""));
+					i += 1;
+				}
+				html.push(
+					"<blockquote><p>" +
+					renderInlineMarkdown(quote.join(" ")) +
+					"</p></blockquote>"
+				);
+				continue;
+			}
+
+			paragraph.push(trimmed);
+			i += 1;
+		}
+
+		flushParagraph();
+		return html.join("");
+	}
+
+	function isTableHeader(lines, index) {
+		if (index + 1 >= lines.length || lines[index].indexOf("|") == -1) {
+			return false;
+		}
+		var headers = splitTableRow(lines[index]);
+		if (headers.length < 2) {
+			return false;
+		}
+		return isTableDivider(lines[index + 1], headers.length);
+	}
+
+	function splitTableRow(line) {
+		var row = $.trim(line);
+		if (row.charAt(0) == "|") {
+			row = row.substring(1);
+		}
+		if (row.charAt(row.length - 1) == "|") {
+			row = row.substring(0, row.length - 1);
+		}
+		return $.map(row.split("|"), function(cell) {
+			return $.trim(cell);
+		});
+	}
+
+	function isTableDivider(line, columns) {
+		var cells = splitTableRow(line);
+		if (cells.length != columns) {
+			return false;
+		}
+		for (var i = 0; i < cells.length; i++) {
+			if (!/^:?-{3,}:?$/.test(cells[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	function isTableRow(line, columns) {
+		if ($.trim(line) === "" || line.indexOf("|") == -1) {
+			return false;
+		}
+		return splitTableRow(line).length == columns;
+	}
+
+	function buildTableHtml(headers, rows) {
+		var html = ["<table><thead><tr>"];
+		for (var i = 0; i < headers.length; i++) {
+			html.push("<th>" + renderInlineMarkdown(headers[i]) + "</th>");
+		}
+		html.push("</tr></thead><tbody>");
+		for (var r = 0; r < rows.length; r++) {
+			html.push("<tr>");
+			for (var c = 0; c < headers.length; c++) {
+				html.push("<td>" + renderInlineMarkdown(rows[r][c] || "") + "</td>");
+			}
+			html.push("</tr>");
+		}
+		html.push("</tbody></table>");
+		return html.join("");
+	}
+
+	function renderInlineMarkdown(text) {
+		return String(text)
+			.replace(/`([^`]+)`/g, "<code>$1</code>")
+			.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+			.replace(/\*([^*]+)\*/g, "<em>$1</em>")
+			.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<a href=\"$2\">$1</a>");
+	}
+
+	function sanitizeMarkdownHtml(html) {
+		var container = document.createElement("div");
+		var allowed = {
+			"A": ["href", "title"],
+			"B": [],
+			"BLOCKQUOTE": [],
+			"BR": [],
+			"CODE": [],
+			"EM": [],
+			"H1": [],
+			"H2": [],
+			"H3": [],
+			"H4": [],
+			"H5": [],
+			"H6": [],
+			"HR": [],
+			"I": [],
+			"LI": [],
+			"OL": [],
+			"P": [],
+			"PRE": [],
+			"STRONG": [],
+			"TABLE": [],
+			"TBODY": [],
+			"TD": [],
+			"TH": [],
+			"THEAD": [],
+			"TR": [],
+			"UL": []
+		};
+
+		container.innerHTML = html;
+		$(container).find("*").each(function() {
+			var tag = this.tagName;
+			var attrs = allowed[tag];
+			var node = this;
+
+			if (!attrs) {
+				$(node).replaceWith(document.createTextNode($(node).text()));
+				return;
+			}
+
+			$.each($.makeArray(node.attributes), function(_, attr) {
+				if ($.inArray(attr.name, attrs) == -1) {
+					node.removeAttribute(attr.name);
+				}
+			});
+
+			if (tag == "A") {
+				sanitizeLink(node);
+			}
+		});
+		return container.innerHTML;
+	}
+
+	function sanitizeLink(node) {
+		var href = node.getAttribute("href") || "";
+		var clean = $.trim(href).toLowerCase();
+		if (
+			clean.indexOf("http://") !== 0 &&
+			clean.indexOf("https://") !== 0 &&
+			clean.indexOf("mailto:") !== 0 &&
+			(clean.indexOf("/") !== 0 || clean.indexOf("//") === 0) &&
+			clean.indexOf("#") !== 0
+		) {
+			node.removeAttribute("href");
+			return;
+		}
+		if (clean.indexOf("http://") === 0 || clean.indexOf("https://") === 0) {
+			node.setAttribute("target", "_blank");
+			node.setAttribute("rel", "noopener noreferrer");
+		}
 	}
 
 	function setBusy(isBusy) {
