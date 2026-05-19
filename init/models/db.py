@@ -805,6 +805,26 @@ db.define_table('ai_llm_user_config',
     Field('updated', 'datetime'),
     migrate=False)
 
+db.define_table('ai_chat_conversation',
+    Field('id', 'integer'),
+    Field('user_id', 'integer'),
+    Field('title', 'string', length=255),
+    Field('created', 'datetime'),
+    Field('updated', 'datetime'),
+    Field('deleted', 'boolean', default=False),
+    migrate=False)
+
+db.define_table('ai_chat_message',
+    Field('id', 'integer'),
+    Field('conversation_id', 'integer'),
+    Field('user_id', 'integer'),
+    Field('role', 'string', length=16),
+    Field('content', 'text'),
+    Field('tool_calls', 'text'),
+    Field('metadata', 'text'),
+    Field('created', 'datetime'),
+    migrate=False)
+
 db.define_table('v_comp_modulesets',
     Field('modset_id','integer'),
     Field('modset_name','string'),

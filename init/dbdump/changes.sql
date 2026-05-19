@@ -7028,6 +7028,35 @@ CREATE TABLE IF NOT EXISTS `ai_llm_user_config` (
   UNIQUE KEY `ai_llm_user_config_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
+CREATE TABLE IF NOT EXISTS `ai_chat_conversation` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `title` varchar(255) DEFAULT NULL,
+  `created` datetime DEFAULT NULL,
+  `updated` datetime DEFAULT NULL,
+  `deleted` boolean DEFAULT false,
+  PRIMARY KEY (`id`),
+  KEY `ai_chat_conversation_user_updated` (`user_id`, `updated`),
+  KEY `ai_chat_conversation_user_deleted` (`user_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
+CREATE TABLE IF NOT EXISTS `ai_chat_message` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `conversation_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `role` varchar(16) NOT NULL,
+  `content` mediumtext,
+  `tool_calls` mediumtext,
+  `metadata` mediumtext,
+  `created` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ai_chat_message_conversation_created` (`conversation_id`, `created`),
+  KEY `ai_chat_message_user_created` (`user_id`, `created`),
+  CONSTRAINT `ai_chat_message_conversation_fk`
+    FOREIGN KEY (`conversation_id`) REFERENCES `ai_chat_conversation` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
 
 -- 2025-01-22
 
