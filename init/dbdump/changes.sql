@@ -7034,7 +7034,7 @@ CREATE TABLE IF NOT EXISTS `ai_chat_conversation` (
   `title` varchar(255) DEFAULT NULL,
   `created` datetime DEFAULT NULL,
   `updated` datetime DEFAULT NULL,
-  `deleted` boolean DEFAULT false,
+  `deleted` varchar(1) DEFAULT 'F',
   PRIMARY KEY (`id`),
   KEY `ai_chat_conversation_user_updated` (`user_id`, `updated`),
   KEY `ai_chat_conversation_user_deleted` (`user_id`, `deleted`)

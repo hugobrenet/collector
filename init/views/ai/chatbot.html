@@ -2,17 +2,113 @@
 
 <style>
 .ai-chatbot {
-	margin: 1em;
-	max-width: 1100px;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	height: calc(100vh - 6em);
+	margin: 0;
+	padding: 1em;
+	width: 100%;
 }
 .ai-chatbot > h2 {
 	margin: 0 0 0.8em 0;
+}
+.ai-chat-layout {
+	display: flex;
+	flex: 1 1 auto;
+	gap: 1em;
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+}
+.ai-chat-history {
+	background: #f7f7f7;
+	border: 1px solid lightgray;
+	border-radius: 3px;
+	display: flex;
+	flex: 0 0 18em;
+	flex-direction: column;
+	max-width: 18em;
+	min-height: 0;
+	min-width: 18em;
+	overflow: hidden;
+	width: 18em;
+}
+.ai-chat-history-header {
+	align-items: center;
+	background: #2d2d2d;
+	color: whitesmoke;
+	display: flex;
+	font-weight: bold;
+	justify-content: space-between;
+	padding: 0.7em 0.8em;
+}
+.ai-chat-new {
+	background: #fff;
+	border: 1px solid #bbb;
+	border-radius: 3px;
+	color: #222;
+	cursor: pointer;
+	font-weight: bold;
+	line-height: 1;
+	padding: 0.2em 0.55em;
+}
+.ai-chat-history-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 0.6em;
+}
+.ai-chat-history-empty {
+	color: #666;
+	padding: 0.6em;
+}
+.ai-chat-history-item {
+	align-items: center;
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	cursor: pointer;
+	display: flex;
+	gap: 0.4em;
+	margin-bottom: 0.45em;
+	min-width: 0;
+	padding: 0.55em;
+}
+.ai-chat-history-item.active {
+	background: #E5FFE5;
+	border-color: #96c696;
+}
+.ai-chat-history-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ai-chat-history-delete {
+	background: transparent;
+	border: 0;
+	color: #777;
+	cursor: pointer;
+	flex: 0 0 auto;
+	font-size: 1.1em;
+	line-height: 1;
+	padding: 0.1em 0.25em;
+}
+.ai-chat-history-delete:hover {
+	color: #9a1f1f;
 }
 .ai-chatbox {
 	background: #fff;
 	border: 1px solid lightgray;
 	border-radius: 3px;
 	box-shadow: inset 0 1px 0 rgba(0,0,0,0.05);
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	min-width: 0;
 }
 .ai-chatbox-header {
 	background: #2d2d2d;
@@ -21,15 +117,20 @@
 	font-weight: bold;
 }
 .ai-chatbox-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
 	padding: 1em;
 }
 .ai-chat-messages {
-	min-height: 18em;
-	max-height: 55vh;
+	flex: 1 1 auto;
+	min-height: 0;
 	overflow-y: auto;
 	background: #fafaf4;
 	border: 1px solid #ddd;
 	padding: 0.8em;
+	min-width: 0;
 }
 .ai-chat-message {
 	margin-bottom: 0.8em;
@@ -43,7 +144,9 @@
 	background: #fff;
 	border: 1px solid #ddd;
 	border-radius: 3px;
+	overflow-wrap: anywhere;
 	padding: 0.7em;
+	word-break: break-word;
 }
 .ai-chat-message.user .ai-chat-message-content {
 	white-space: pre-wrap;
@@ -152,9 +255,11 @@
 	gap: 0.8em;
 	margin-top: 1em;
 	align-items: flex-end;
+	min-width: 0;
 }
 .ai-chat-form textarea {
 	flex: 1 1 auto;
+	min-width: 0;
 	min-height: 6em;
 	resize: vertical;
 	border: 1px solid lightgray;
@@ -184,6 +289,18 @@
 	min-height: 1.3em;
 }
 @media (max-width: 700px) {
+	.ai-chatbot {
+		height: auto;
+		min-height: auto;
+		padding: 0.7em;
+	}
+	.ai-chat-layout {
+		display: block;
+	}
+	.ai-chat-history {
+		margin-bottom: 0.8em;
+		max-height: 16em;
+	}
 	.ai-chat-form {
 		display: block;
 	}
@@ -196,27 +313,40 @@
 
 <div class="ai-chatbot">
 	<h2>{{=T("AI Assistant")}}</h2>
-	<div class="ai-chatbox">
-		<div class="ai-chatbox-header">{{=T("OpenSVC AI chatbot")}}</div>
-		<div class="ai-chatbox-body">
-			<div id="ai-chat-messages" class="ai-chat-messages"></div>
-			<form id="ai-chat-form" class="ai-chat-form">
-				<textarea id="ai-chat-input" placeholder="{{=T('Ask a question about your OpenSVC environment')}}"></textarea>
-				<button id="ai-chat-submit" type="submit">{{=T("Send")}}</button>
-			</form>
-			<div id="ai-chat-status" class="ai-chat-status"></div>
-			<div id="ai-chat-error" class="error ai-chat-error"></div>
+	<div class="ai-chat-layout">
+		<div class="ai-chat-history">
+			<div class="ai-chat-history-header">
+				<span>{{=T("History")}}</span>
+				<button id="ai-chat-new" class="ai-chat-new" type="button" title="{{=T('New conversation')}}">+</button>
+			</div>
+			<div id="ai-chat-history-list" class="ai-chat-history-list"></div>
+		</div>
+		<div class="ai-chatbox">
+			<div class="ai-chatbox-header">{{=T("OpenSVC AI chatbot")}}</div>
+			<div class="ai-chatbox-body">
+				<div id="ai-chat-messages" class="ai-chat-messages"></div>
+				<form id="ai-chat-form" class="ai-chat-form">
+					<textarea id="ai-chat-input" placeholder="{{=T('Ask a question about your OpenSVC environment')}}"></textarea>
+					<button id="ai-chat-submit" type="submit">{{=T("Send")}}</button>
+				</form>
+				<div id="ai-chat-status" class="ai-chat-status"></div>
+				<div id="ai-chat-error" class="error ai-chat-error"></div>
+			</div>
 		</div>
 	</div>
 </div>
 
 <script>
 (function() {
-	var history = [];
+	var conversationsUrl = "{{=URL('ai', 'conversations')}}";
+	var currentConversationId = null;
+	var conversations = [];
 	var form = $("#ai-chat-form");
 	var input = $("#ai-chat-input");
 	var button = $("#ai-chat-submit");
 	var messages = $("#ai-chat-messages");
+	var historyList = $("#ai-chat-history-list");
+	var newButton = $("#ai-chat-new");
 	var status = $("#ai-chat-status");
 	var error = $("#ai-chat-error");
 
@@ -236,6 +366,156 @@
 		}
 		messages.append(msg);
 		messages.scrollTop(messages.prop("scrollHeight"));
+	}
+
+	function clearMessages() {
+		messages.empty();
+	}
+
+	function conversationUrl(conversationId, suffix) {
+		var url = conversationsUrl + "/" + encodeURIComponent(conversationId);
+		if (suffix) {
+			url += "/" + suffix;
+		}
+		return url;
+	}
+
+	function renderConversations() {
+		historyList.empty();
+
+		if (conversations.length === 0) {
+			historyList.append(
+				$("<div>")
+					.addClass("ai-chat-history-empty")
+					.text("{{=T('No conversation yet')}}")
+			);
+			return;
+		}
+
+		$.each(conversations, function(_, conversation) {
+			var item = $("<div>").addClass("ai-chat-history-item");
+			var title = $("<div>").addClass("ai-chat-history-title");
+			var remove = $("<button>")
+				.addClass("ai-chat-history-delete")
+				.attr("type", "button")
+				.attr("title", "{{=T('Delete conversation')}}")
+				.text("x");
+
+			if (conversation.id == currentConversationId) {
+				item.addClass("active");
+			}
+			title.text(conversation.title || "{{=T('New conversation')}}");
+			item.append(title).append(remove);
+			item.on("click", function() {
+				selectConversation(conversation.id);
+			});
+			remove.on("click", function(event) {
+				event.stopPropagation();
+				deleteConversation(conversation.id);
+			});
+			historyList.append(item);
+		});
+	}
+
+	function loadConversations() {
+		return $.ajax({
+			url: conversationsUrl,
+			method: "GET",
+			dataType: "json",
+			success: function(data) {
+				var found = false;
+				conversations = data.conversations || [];
+				$.each(conversations, function(_, conversation) {
+					if (conversation.id == currentConversationId) {
+						found = true;
+					}
+				});
+				if (currentConversationId && !found) {
+					currentConversationId = null;
+				}
+				renderConversations();
+				if (!currentConversationId && conversations.length > 0) {
+					selectConversation(conversations[0].id);
+				} else if (!currentConversationId) {
+					clearMessages();
+				}
+			},
+			error: function(xhr) {
+				error.text(errorText(xhr)).show();
+			}
+		});
+	}
+
+	function selectConversation(conversationId) {
+		currentConversationId = conversationId;
+		renderConversations();
+		setBusy(true, "{{=T('Loading conversation...')}}");
+		error.hide().text("");
+		$.ajax({
+			url: conversationUrl(conversationId, "messages"),
+			method: "GET",
+			dataType: "json",
+			success: function(data) {
+				clearMessages();
+				$.each(data.messages || [], function(_, message) {
+					appendMessage(
+						message.role,
+						message.content || "",
+						message.tool_calls
+					);
+				});
+			},
+			error: function(xhr) {
+				error.text(errorText(xhr)).show();
+			},
+			complete: function() {
+				setBusy(false);
+				input.focus();
+			}
+		});
+	}
+
+	function deleteConversation(conversationId) {
+		if (!window.confirm("{{=T('Delete this conversation?')}}")) {
+			return;
+		}
+		setBusy(true, "{{=T('Deleting conversation...')}}");
+		error.hide().text("");
+		$.ajax({
+			url: conversationUrl(conversationId),
+			method: "DELETE",
+			dataType: "json",
+			success: function() {
+				if (conversationId == currentConversationId) {
+					currentConversationId = null;
+					clearMessages();
+				}
+				loadConversations();
+			},
+			error: function(xhr) {
+				error.text(errorText(xhr)).show();
+			},
+			complete: function() {
+				setBusy(false);
+				input.focus();
+			}
+		});
+	}
+
+	function createConversation(title) {
+		return $.ajax({
+			url: conversationsUrl,
+			method: "POST",
+			contentType: "application/json",
+			dataType: "json",
+			data: JSON.stringify({
+				title: title
+			})
+		}).then(function(data) {
+			currentConversationId = data.conversation.id;
+			conversations.unshift(data.conversation);
+			return data.conversation;
+		});
 	}
 
 	function appendToolCalls(message, toolCalls) {
@@ -614,10 +894,10 @@
 		}
 	}
 
-	function setBusy(isBusy) {
+	function setBusy(isBusy, message) {
 		button.prop("disabled", isBusy);
 		input.prop("disabled", isBusy);
-		status.text(isBusy ? "{{=T('Waiting for LLM response...')}}" : "");
+		status.text(isBusy ? (message || "{{=T('Waiting for LLM response...')}}") : "");
 	}
 
 	function responseText(data) {
@@ -697,6 +977,26 @@
 		}
 	}
 
+	function titleFromMessage(message) {
+		message = $.trim(message || "").replace(/\s+/g, " ");
+		if (message.length > 60) {
+			return message.substring(0, 57) + "...";
+		}
+		return message || "{{=T('New conversation')}}";
+	}
+
+	function sendConversationMessage(message) {
+		return $.ajax({
+			url: conversationUrl(currentConversationId, "chat"),
+			method: "POST",
+			contentType: "application/json",
+			dataType: "json",
+			data: JSON.stringify({
+				message: message
+			})
+		});
+	}
+
 	form.on("submit", function(event) {
 		event.preventDefault();
 		var message = $.trim(input.val());
@@ -710,31 +1010,35 @@
 		input.val("");
 		setBusy(true);
 
-		$.ajax({
-			url: "{{=URL('ai', 'chat')}}",
-			method: "POST",
-			contentType: "application/json",
-			dataType: "json",
-			data: JSON.stringify({
-				message: message,
-				history: history
-			}),
-			success: function(data) {
+		(
+			currentConversationId ?
+			$.Deferred().resolve().promise() :
+			createConversation(titleFromMessage(message))
+		).then(function() {
+			renderConversations();
+			return sendConversationMessage(message);
+		}).done(function(data) {
 				var answer = responseText(data);
 				appendMessage("assistant", answer, responseToolCalls(data));
-				history.push({role: "user", content: message});
-				history.push({role: "assistant", content: answer});
-			},
-			error: function(xhr) {
+				loadConversations();
+		}).fail(function(xhr) {
 				error.text(errorText(xhr)).show();
-			},
-			complete: function() {
+		}).always(function() {
 				setBusy(false);
 				input.focus();
-			}
 		});
 	});
 
+	newButton.on("click", function() {
+		currentConversationId = null;
+		clearMessages();
+		renderConversations();
+		error.hide().text("");
+		status.text("{{=T('New conversation')}}");
+		input.focus();
+	});
+
+	loadConversations();
 	input.focus();
 })();
 </script>
