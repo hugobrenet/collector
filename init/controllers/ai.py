@@ -17,6 +17,8 @@ try:
 except NameError:
     string_types = (str,)
 
+AI_CHAT_HISTORY_LIMIT = 20
+
 
 def _json_response(data):
     response.headers["Content-Type"] = "application/json"
@@ -105,6 +107,37 @@ def _clean_title(value):
     return value[:255]
 
 
+def _validated_message(payload):
+    message = payload.get("message")
+    if not isinstance(message, string_types) or not message.strip():
+        raise HTTP(400, json.dumps({"error": "Missing or empty message"}))
+    return message.strip()
+
+
+def _history_messages(conversation_id):
+    rows = db(
+      (db.ai_chat_message.conversation_id == conversation_id) &
+      (db.ai_chat_message.user_id == auth.user_id) &
+      (db.ai_chat_message.role.belongs(("user", "assistant")))
+    ).select(
+      orderby=~db.ai_chat_message.created,
+      limitby=(0, AI_CHAT_HISTORY_LIMIT),
+    )
+    rows = list(rows)
+    rows.reverse()
+    return [
+      {"role": row.role, "content": row.content}
+      for row in rows
+      if row.content
+    ]
+
+
+def _json_dump_field(value):
+    if value is None:
+        return None
+    return json.dumps(value)
+
+
 @auth.requires_login()
 def chatbot():
     return dict()
@@ -122,9 +155,7 @@ def chat():
     if not isinstance(payload, dict):
         raise HTTP(400, json.dumps({"error": "JSON payload must be an object"}))
 
-    message = payload.get("message")
-    if not isinstance(message, string_types) or not message.strip():
-        raise HTTP(400, json.dumps({"error": "Missing or empty message"}))
+    _validated_message(payload)
 
     try:
         return json.dumps(ai_gateway_chat(session, config_get, payload))
@@ -160,6 +191,57 @@ def conversations():
         row = _conversation_or_404(request.args[0])
         row.update_record(deleted=True, updated=request.now)
         return _json_response({"deleted": True, "id": row.id})
+
+    if (
+      len(request.args) == 2 and
+      request.args[1] == "chat" and
+      _method() == "POST"
+    ):
+        row = _conversation_or_404(request.args[0])
+        payload = _json_payload()
+        message = _validated_message(payload)
+        gateway_payload = dict(payload)
+        gateway_payload["message"] = message
+        gateway_payload["history"] = _history_messages(row.id)
+
+        try:
+            gateway_response = ai_gateway_chat(
+              session,
+              config_get,
+              gateway_payload,
+            )
+        except AiGatewayError as exc:
+            raise HTTP(exc.status_code, json.dumps({"error": exc.detail}))
+
+        if not isinstance(gateway_response, dict):
+            raise HTTP(502, json.dumps({"error": "Invalid AI gateway response"}))
+
+        now = request.now
+        user_message_id = db.ai_chat_message.insert(
+          conversation_id=row.id,
+          user_id=auth.user_id,
+          role="user",
+          content=message,
+          created=now,
+        )
+        assistant_message_id = db.ai_chat_message.insert(
+          conversation_id=row.id,
+          user_id=auth.user_id,
+          role="assistant",
+          content=gateway_response.get("message") or "",
+          tool_calls=_json_dump_field(gateway_response.get("tool_calls")),
+          metadata=_json_dump_field({
+            "provider": gateway_response.get("provider"),
+            "model": gateway_response.get("model"),
+          }),
+          created=now,
+        )
+        row.update_record(updated=now)
+
+        gateway_response["conversation_id"] = row.id
+        gateway_response["user_message_id"] = user_message_id
+        gateway_response["assistant_message_id"] = assistant_message_id
+        return _json_response(gateway_response)
 
     if (
       len(request.args) == 2 and
