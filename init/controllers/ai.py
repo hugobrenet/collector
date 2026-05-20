@@ -18,6 +18,93 @@ except NameError:
     string_types = (str,)
 
 
+def _json_response(data):
+    response.headers["Content-Type"] = "application/json"
+    return json.dumps(data)
+
+
+def _json_payload(allow_empty=False):
+    body = request.body.read()
+    if not body and allow_empty:
+        return {}
+
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTP(400, json.dumps({"error": "Invalid JSON payload"}))
+
+    if not isinstance(payload, dict):
+        raise HTTP(400, json.dumps({"error": "JSON payload must be an object"}))
+    return payload
+
+
+def _method():
+    return request.env.request_method.upper()
+
+
+def _conversation_or_404(conversation_id):
+    try:
+        conversation_id = int(conversation_id)
+    except (TypeError, ValueError):
+        raise HTTP(404, json.dumps({"error": "Conversation not found"}))
+
+    row = db(
+      (db.ai_chat_conversation.id == conversation_id) &
+      (db.ai_chat_conversation.user_id == auth.user_id) &
+      (db.ai_chat_conversation.deleted == False)
+    ).select().first()
+
+    if row is None:
+        raise HTTP(404, json.dumps({"error": "Conversation not found"}))
+    return row
+
+
+def _conversation_dict(row):
+    return {
+      "id": row.id,
+      "title": row.title,
+      "created": _datetime_value(row.created),
+      "updated": _datetime_value(row.updated),
+    }
+
+
+def _message_dict(row):
+    return {
+      "id": row.id,
+      "conversation_id": row.conversation_id,
+      "role": row.role,
+      "content": row.content,
+      "tool_calls": _json_field(row.tool_calls),
+      "metadata": _json_field(row.metadata),
+      "created": _datetime_value(row.created),
+    }
+
+
+def _datetime_value(value):
+    if value is None:
+        return None
+    return value.isoformat(" ")
+
+
+def _json_field(value):
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return value
+
+
+def _clean_title(value):
+    if not isinstance(value, string_types):
+        return "New conversation"
+
+    value = value.strip()
+    if not value:
+        return "New conversation"
+    return value[:255]
+
+
 @auth.requires_login()
 def chatbot():
     return dict()
@@ -43,6 +130,53 @@ def chat():
         return json.dumps(ai_gateway_chat(session, config_get, payload))
     except AiGatewayError as exc:
         raise HTTP(exc.status_code, json.dumps({"error": exc.detail}))
+
+
+@auth.requires_login()
+def conversations():
+    if len(request.args) == 0 and _method() == "GET":
+        rows = db(
+          (db.ai_chat_conversation.user_id == auth.user_id) &
+          (db.ai_chat_conversation.deleted == False)
+        ).select(orderby=~db.ai_chat_conversation.updated)
+        return _json_response({
+          "conversations": [_conversation_dict(row) for row in rows],
+        })
+
+    if len(request.args) == 0 and _method() == "POST":
+        payload = _json_payload(allow_empty=True)
+        now = request.now
+        conversation_id = db.ai_chat_conversation.insert(
+          user_id=auth.user_id,
+          title=_clean_title(payload.get("title")),
+          created=now,
+          updated=now,
+          deleted=False,
+        )
+        row = db.ai_chat_conversation[conversation_id]
+        return _json_response({"conversation": _conversation_dict(row)})
+
+    if len(request.args) == 1 and _method() == "DELETE":
+        row = _conversation_or_404(request.args[0])
+        row.update_record(deleted=True, updated=request.now)
+        return _json_response({"deleted": True, "id": row.id})
+
+    if (
+      len(request.args) == 2 and
+      request.args[1] == "messages" and
+      _method() == "GET"
+    ):
+        row = _conversation_or_404(request.args[0])
+        messages = db(
+          (db.ai_chat_message.conversation_id == row.id) &
+          (db.ai_chat_message.user_id == auth.user_id)
+        ).select(orderby=db.ai_chat_message.created)
+        return _json_response({
+          "conversation": _conversation_dict(row),
+          "messages": [_message_dict(message) for message in messages],
+        })
+
+    raise HTTP(404, json.dumps({"error": "Endpoint not found"}))
 
 
 @auth.requires_login()
