@@ -1,3 +1,10 @@
+LLM_PROVIDER_CHOICES = [
+    ("openai_compatible", "OpenAI-compatible"),
+    ("anthropic", "Anthropic"),
+    ("gemini", "Gemini"),
+    ("mistral", "Mistral"),
+    ("azure_openai", "Azure OpenAI"),
+]
 DEFAULT_PROVIDER = "openai_compatible"
 DEFAULT_COMPLETION_TOKEN_PARAMETER = "max_completion_tokens"
 DEFAULT_MAX_TOOL_ITERATIONS = 5

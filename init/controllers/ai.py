@@ -4,8 +4,8 @@ from applications.init.modules.ai_gateway import AiGatewayError, ai_gateway_chat
 from applications.init.modules.ai_llm_config import (
     DEFAULT_COMPLETION_TOKEN_PARAMETER,
     DEFAULT_MAX_TOOL_ITERATIONS,
-    DEFAULT_PROVIDER,
     DEFAULT_TOOL_RESULT_MAX_CHARS,
+    LLM_PROVIDER_CHOICES,
     ai_llm_form_defaults,
     ai_llm_mask_api_key,
     ai_llm_store_values,
@@ -266,8 +266,17 @@ def config():
     row = ai_llm_user_row(db, auth.user_id)
     defaults = ai_llm_form_defaults(row)
     masked_api_key = ai_llm_mask_api_key(row.api_key if row is not None else None)
+    provider_values = [item[0] for item in LLM_PROVIDER_CHOICES]
+    provider_labels = [T(item[1]) for item in LLM_PROVIDER_CHOICES]
 
     form = SQLFORM.factory(
+      Field(
+        "provider",
+        "string",
+        default=defaults["provider"],
+        label=T("Provider"),
+        requires=IS_IN_SET(provider_values, labels=provider_labels, zero=None),
+      ),
       Field(
         "base_url",
         "string",
@@ -298,7 +307,6 @@ def config():
         current_api_key = row.api_key if row is not None else None
         if form.vars.api_key == masked_api_key:
             form.vars.api_key = ""
-        form.vars.provider = DEFAULT_PROVIDER
         form.vars.temperature = None
         form.vars.max_tokens = None
         form.vars.completion_token_parameter = (

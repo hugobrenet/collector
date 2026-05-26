@@ -1152,6 +1152,7 @@
 'Mirroring': 'Mirroring',
 'Misc': 'Divers',
 'Model': 'Modèle',
+'Provider': 'Fournisseur',
 'model': 'modèle',
 'Modified "%(var_class)s" variable "%(var_name)s" in ruleset "%(rset_name)s" with value:\n%(var_value)s': 'Variable "%(var_name)s" de classe "%(var_class)s" a été modifiée dans le jeu de règles "%(rset_name)s" avec la valeur :\r\n%(var_value)s',
 "Modified '%(var_class)s' variable '%(var_name)s' in ruleset '%(rset_name)s' with value:\n%(var_value)s": "Variable '%(var_name)s' de classe '%(var_class)s' a été modifiée dans le jeu de règles '%(rset_name)s' avec la valeur :\r\n%(var_value)s",
