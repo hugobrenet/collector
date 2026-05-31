@@ -6,6 +6,7 @@ from applications.init.modules.ai_llm_config import (
     DEFAULT_MAX_TOOL_ITERATIONS,
     DEFAULT_TOOL_RESULT_MAX_CHARS,
     LLM_PROVIDER_CHOICES,
+    LLM_SELECTABLE_PROVIDER_VALUES,
     ai_llm_form_defaults,
     ai_llm_mask_api_key,
     ai_llm_store_values,
@@ -138,6 +139,24 @@ def _json_dump_field(value):
     return json.dumps(value)
 
 
+def _provider_select_widget(field, value, provider_options):
+    active_values = [item[0] for item in provider_options if item[2]]
+    if value not in active_values:
+        value = active_values[0]
+
+    field_id = "%s_%s" % (getattr(field, "_tablename", "no_table"), field.name)
+    options = []
+    for provider, label, enabled in provider_options:
+        attrs = {"_value": provider}
+        if provider == value:
+            attrs["_selected"] = "selected"
+        if not enabled:
+            attrs["_disabled"] = "disabled"
+            attrs["_title"] = T("Provider adapter not enabled yet")
+        options.append(OPTION(label, **attrs))
+    return SELECT(*options, _name=field.name, _id=field_id)
+
+
 @auth.requires_login()
 def chatbot():
     return dict()
@@ -266,8 +285,16 @@ def config():
     row = ai_llm_user_row(db, auth.user_id)
     defaults = ai_llm_form_defaults(row)
     masked_api_key = ai_llm_mask_api_key(row.api_key if row is not None else None)
-    provider_values = [item[0] for item in LLM_PROVIDER_CHOICES]
-    provider_labels = [T(item[1]) for item in LLM_PROVIDER_CHOICES]
+    provider_options = [
+      (
+        item[0],
+        T(item[1]),
+        item[0] in LLM_SELECTABLE_PROVIDER_VALUES,
+      )
+      for item in LLM_PROVIDER_CHOICES
+    ]
+    provider_values = [item[0] for item in provider_options if item[2]]
+    provider_labels = [item[1] for item in provider_options if item[2]]
 
     form = SQLFORM.factory(
       Field(
@@ -276,6 +303,11 @@ def config():
         default=defaults["provider"],
         label=T("Provider"),
         requires=IS_IN_SET(provider_values, labels=provider_labels, zero=None),
+        widget=lambda field, value: _provider_select_widget(
+          field,
+          value,
+          provider_options,
+        ),
       ),
       Field(
         "base_url",
