@@ -163,26 +163,6 @@ def chatbot():
 
 
 @auth.requires_login()
-def chat():
-    response.headers["Content-Type"] = "application/json"
-
-    try:
-        payload = json.loads(request.body.read())
-    except Exception:
-        raise HTTP(400, json.dumps({"error": "Invalid JSON payload"}))
-
-    if not isinstance(payload, dict):
-        raise HTTP(400, json.dumps({"error": "JSON payload must be an object"}))
-
-    _validated_message(payload)
-
-    try:
-        return json.dumps(ai_gateway_chat(session, config_get, payload))
-    except AiGatewayError as exc:
-        raise HTTP(exc.status_code, json.dumps({"error": exc.detail}))
-
-
-@auth.requires_login()
 def conversations():
     if len(request.args) == 0 and _method() == "GET":
         rows = db(
