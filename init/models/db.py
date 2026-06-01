@@ -56,8 +56,15 @@ def db_error_handler(exc):
     # session.connect(request, response, db=MEMDB(Client())
 #else:                                         # else use a normal relational database
 try:
-    db = DAL('mysql://%s:%s@%s/opensvc' % (dbopensvc_user, dbopensvc_password, dbopensvc_host),
-             driver_args={'connect_timeout': 20},
+    db = DAL('mysql://%s:%s@%s/opensvc?set_encoding=utf8mb4' % (
+               dbopensvc_user,
+               dbopensvc_password,
+               dbopensvc_host,
+             ),
+             driver_args={
+               'connect_timeout': 20,
+               'use_unicode': True,
+             },
              pool_size=0,
              lazy_tables=True)
 except Exception as exc:

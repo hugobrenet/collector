@@ -366,6 +366,13 @@
 		}
 		messages.append(msg);
 		messages.scrollTop(messages.prop("scrollHeight"));
+		return msg;
+	}
+
+	function setAssistantMessageText(messageElement, text) {
+		var content = messageElement.find(".ai-chat-message-content").first();
+		renderAssistantMessage(content, text);
+		messages.scrollTop(messages.prop("scrollHeight"));
 	}
 
 	function clearMessages() {
@@ -997,9 +1004,132 @@
 		});
 	}
 
+	function sendConversationMessageStream(message, assistantMessage) {
+		if (!window.fetch || !window.TextDecoder || !window.ReadableStream) {
+			return sendConversationMessage(message).then(function(data) {
+				setAssistantMessageText(assistantMessage, responseText(data));
+				appendToolCalls(assistantMessage, responseToolCalls(data));
+				return data;
+			});
+		}
+
+		var deferred = $.Deferred();
+		var answer = "";
+		var finalData = null;
+		var eventName = "message";
+		var dataLines = [];
+
+		function consumeEvent() {
+			var raw;
+			var data;
+			if (dataLines.length === 0) {
+				eventName = "message";
+				return;
+			}
+			raw = dataLines.join("\n");
+			dataLines = [];
+			try {
+				data = JSON.parse(raw);
+			} catch (e) {
+				deferred.reject({responseText: raw});
+				return;
+			}
+
+			if (eventName == "delta") {
+				answer += data.content || "";
+				setAssistantMessageText(assistantMessage, answer);
+			} else if (eventName == "tool_call") {
+				status.text("{{=T('Using Collector tools...')}}");
+			} else if (eventName == "done") {
+				finalData = data;
+				if (data.message) {
+					answer = data.message;
+					setAssistantMessageText(assistantMessage, answer);
+				}
+				appendToolCalls(assistantMessage, responseToolCalls(data));
+			} else if (eventName == "error") {
+				deferred.reject({responseText: valueText(data.error || data)});
+			}
+			eventName = "message";
+		}
+
+		function consumeText(text) {
+			var lines = text.split(/\r?\n/);
+			$.each(lines, function(_, line) {
+				if (line === "") {
+					consumeEvent();
+				} else if (line.indexOf("event:") === 0) {
+					eventName = $.trim(line.substring(6));
+				} else if (line.indexOf("data:") === 0) {
+					dataLines.push($.trim(line.substring(5)));
+				}
+			});
+		}
+
+		fetch(conversationUrl(currentConversationId, "chat/stream"), {
+			method: "POST",
+			credentials: "same-origin",
+			headers: {
+				"Content-Type": "application/json",
+				"Accept": "text/event-stream"
+			},
+			body: JSON.stringify({
+				message: message
+			})
+		}).then(function(response) {
+			if (!response.ok) {
+				return response.text().then(function(text) {
+					deferred.reject({responseText: text});
+				});
+			}
+			var reader = response.body.getReader();
+			var decoder = new TextDecoder("utf-8");
+			var pending = "";
+
+			function read() {
+				return reader.read().then(function(result) {
+					var text;
+					var lastBreak;
+					if (result.done) {
+						if (pending) {
+							consumeText(pending);
+						}
+						if (dataLines.length > 0) {
+							consumeEvent();
+						}
+						if (finalData) {
+							deferred.resolve(finalData);
+						} else {
+							deferred.reject({
+								responseText: "{{=T('The AI stream ended without a final response.')}}"
+							});
+						}
+						return;
+					}
+					text = pending + decoder.decode(result.value, {stream: true});
+					lastBreak = Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r"));
+					if (lastBreak == -1) {
+						pending = text;
+					} else {
+						consumeText(text.substring(0, lastBreak + 1));
+						pending = text.substring(lastBreak + 1);
+					}
+					return read();
+				});
+			}
+
+			return read();
+		}).catch(function(exc) {
+			deferred.reject({responseText: valueText(exc)});
+		});
+
+		return deferred.promise();
+	}
+
 	form.on("submit", function(event) {
 		event.preventDefault();
 		var message = $.trim(input.val());
+		var assistantMessage;
 		if (!message) {
 			input.focus();
 			return;
@@ -1007,6 +1137,7 @@
 
 		error.hide().text("");
 		appendMessage("user", message);
+		assistantMessage = appendMessage("assistant", "");
 		input.val("");
 		setBusy(true);
 
@@ -1016,10 +1147,8 @@
 			createConversation(titleFromMessage(message))
 		).then(function() {
 			renderConversations();
-			return sendConversationMessage(message);
+			return sendConversationMessageStream(message, assistantMessage);
 		}).done(function(data) {
-				var answer = responseText(data);
-				appendMessage("assistant", answer, responseToolCalls(data));
 				loadConversations();
 		}).fail(function(xhr) {
 				error.text(errorText(xhr)).show();

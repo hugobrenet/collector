@@ -1,6 +1,12 @@
+import logging
+
 import gluon.contrib.simplejson as json
 
-from applications.init.modules.ai_gateway import AiGatewayError, ai_gateway_chat
+from applications.init.modules.ai_gateway import (
+    AiGatewayError,
+    ai_gateway_chat,
+    ai_gateway_chat_stream,
+)
 from applications.init.modules.ai_llm_config import (
     DEFAULT_COMPLETION_TOKEN_PARAMETER,
     DEFAULT_MAX_TOOL_ITERATIONS,
@@ -19,6 +25,7 @@ except NameError:
     string_types = (str,)
 
 AI_CHAT_HISTORY_LIMIT = 20
+LOG = logging.getLogger("web2py.app.init.ai")
 
 
 def _json_response(data):
@@ -136,7 +143,42 @@ def _history_messages(conversation_id):
 def _json_dump_field(value):
     if value is None:
         return None
-    return json.dumps(value)
+    return _db_text(json.dumps(value))
+
+
+def _db_text(value):
+    return value
+
+
+def _insert_chat_message(
+  conversation_id,
+  user_id,
+  role,
+  content,
+  created,
+  tool_calls=None,
+  metadata=None,
+):
+    if db._adapter.connection is None:
+        db._adapter.reconnect()
+    db.executesql(
+      """
+      INSERT INTO ai_chat_message
+        (conversation_id, user_id, role, content, tool_calls, metadata, created)
+      VALUES
+        (%s, %s, %s, %s, %s, %s, %s)
+      """,
+      placeholders=(
+        conversation_id,
+        user_id,
+        role,
+        content,
+        tool_calls,
+        metadata,
+        created,
+      ),
+    )
+    return db._adapter.cursor.lastrowid
 
 
 def _provider_select_widget(field, value, provider_options):
@@ -155,6 +197,68 @@ def _provider_select_widget(field, value, provider_options):
             attrs["_title"] = T("Provider adapter not enabled yet")
         options.append(OPTION(label, **attrs))
     return SELECT(*options, _name=field.name, _id=field_id)
+
+
+class _PersistingSseStream(object):
+    def __init__(self, upstream, on_done):
+        self.upstream = upstream
+        self.on_done = on_done
+        self.done_persisted = False
+
+    def read(self, chunk_size):
+        lines = self._read_event_lines()
+        if not lines:
+            return ""
+        return self._consume_event(lines)
+
+    def close(self):
+        try:
+            self.upstream.close()
+        except Exception:
+            pass
+
+    def _read_event_lines(self):
+        lines = []
+        while True:
+            line = self.upstream.readline()
+            if not line:
+                return lines
+            lines.append(line)
+            text = line
+            if not isinstance(text, string_types):
+                text = text.decode("utf-8", "replace")
+            if text.strip() == "":
+                return lines
+
+    def _consume_event(self, lines):
+        event_name = None
+        data_lines = []
+        for line in lines:
+            text = line
+            if not isinstance(text, string_types):
+                text = text.decode("utf-8", "replace")
+            stripped = text.strip()
+            if stripped.startswith("event:"):
+                event_name = stripped.split(":", 1)[1].strip()
+            elif stripped.startswith("data:"):
+                data_lines.append(stripped.split(":", 1)[1].strip())
+
+        if event_name != "done" or self.done_persisted or not data_lines:
+            return "".join(lines)
+
+        try:
+            payload = json.loads("\n".join(data_lines))
+        except Exception:
+            return "".join(lines)
+        if not isinstance(payload, dict):
+            return "".join(lines)
+        try:
+            payload = self.on_done(payload)
+        except Exception:
+            LOG.exception("failed to persist streamed AI response")
+            payload["persistence_error"] = True
+        self.done_persisted = True
+        return "event: done\ndata: %s\n\n" % json.dumps(payload)
 
 
 @auth.requires_login()
@@ -220,14 +324,14 @@ def conversations():
           conversation_id=row.id,
           user_id=auth.user_id,
           role="user",
-          content=message,
+          content=_db_text(message),
           created=now,
         )
         assistant_message_id = db.ai_chat_message.insert(
           conversation_id=row.id,
           user_id=auth.user_id,
           role="assistant",
-          content=gateway_response.get("message") or "",
+          content=_db_text(gateway_response.get("message") or ""),
           tool_calls=_json_dump_field(gateway_response.get("tool_calls")),
           metadata=_json_dump_field({
             "provider": gateway_response.get("provider"),
@@ -241,6 +345,67 @@ def conversations():
         gateway_response["user_message_id"] = user_message_id
         gateway_response["assistant_message_id"] = assistant_message_id
         return _json_response(gateway_response)
+
+    if (
+      len(request.args) == 3 and
+      request.args[1] == "chat" and
+      request.args[2] == "stream" and
+      _method() == "POST"
+    ):
+        row = _conversation_or_404(request.args[0])
+        payload = _json_payload()
+        message = _validated_message(payload)
+        gateway_payload = dict(payload)
+        gateway_payload["message"] = message
+        gateway_payload["history"] = _history_messages(row.id)
+
+        try:
+            upstream = ai_gateway_chat_stream(
+              session,
+              config_get,
+              gateway_payload,
+            )
+        except AiGatewayError as exc:
+            raise HTTP(exc.status_code, json.dumps({"error": exc.detail}))
+
+        now = request.now
+        user_message_id = db.ai_chat_message.insert(
+          conversation_id=row.id,
+          user_id=auth.user_id,
+          role="user",
+          content=_db_text(message),
+          created=now,
+        )
+        row.update_record(updated=now)
+
+        def on_done(gateway_response):
+            now = request.now
+            assistant_message_id = _insert_chat_message(
+              row.id,
+              auth.user_id,
+              "assistant",
+              _db_text(gateway_response.get("message") or ""),
+              now,
+              tool_calls=_json_dump_field(gateway_response.get("tool_calls")),
+              metadata=_json_dump_field({
+                "provider": gateway_response.get("provider"),
+                "model": gateway_response.get("model"),
+              }),
+            )
+            row.update_record(updated=now)
+            db.commit()
+            gateway_response["conversation_id"] = row.id
+            gateway_response["user_message_id"] = user_message_id
+            gateway_response["assistant_message_id"] = assistant_message_id
+            return gateway_response
+
+        response.headers["Content-Type"] = "text/event-stream"
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response.stream(
+          _PersistingSseStream(upstream, on_done),
+          chunk_size=1,
+        )
 
     if (
       len(request.args) == 2 and

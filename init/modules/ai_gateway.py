@@ -76,6 +76,43 @@ def ai_gateway_chat(session, config_get, payload):
         raise AiGatewayError(502, "AI gateway request failed: %s" % exc)
 
 
+def ai_gateway_chat_stream(session, config_get, payload):
+    """Open a streaming gateway response for a Collector user prompt."""
+    if not _as_bool(config_get("ai_gateway_enabled", False)):
+        raise AiGatewayError(503, "AI gateway is disabled")
+
+    gateway_url = config_get("ai_gateway_url", None)
+    endpoint = config_get(
+      "ai_gateway_chat_stream_endpoint",
+      "/api/v1/ai/chat/stream",
+    )
+    timeout = config_get("ai_gateway_chat_timeout", 120)
+    session_id = getattr(session, "ai_gateway_session_id", None)
+
+    if not gateway_url:
+        raise AiGatewayError(503, "AI gateway url is not configured")
+    if not session_id:
+        raise AiGatewayError(401, "Missing AI gateway session")
+
+    url = gateway_url.rstrip("/") + "/" + endpoint.lstrip("/")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "X-OpenSVC-AI-Session": session_id,
+    }
+
+    try:
+        body = json.dumps(payload).encode("utf-8")
+        request = _MethodRequest(url, body, headers, method="POST")
+        return urlopen(request, timeout=timeout)
+    except HTTPError as exc:
+        raise AiGatewayError(exc.code, _read_error_body(exc))
+    except URLError as exc:
+        raise AiGatewayError(502, "AI gateway stream request failed: %s" % exc)
+    except Exception as exc:
+        raise AiGatewayError(502, "AI gateway stream request failed: %s" % exc)
+
+
 def ai_gateway_login_onaccept(form, request, session, config_get):
     """Create a short-lived gateway session after a successful Collector login."""
     if not _as_bool(config_get("ai_gateway_enabled", False)):
