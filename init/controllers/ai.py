@@ -4,7 +4,6 @@ import gluon.contrib.simplejson as json
 
 from applications.init.modules.ai_gateway import (
     AiGatewayError,
-    ai_gateway_chat,
     ai_gateway_chat_stream,
 )
 from applications.init.modules.ai_llm_config import (
@@ -294,57 +293,6 @@ def conversations():
         row = _conversation_or_404(request.args[0])
         row.update_record(deleted=True, updated=request.now)
         return _json_response({"deleted": True, "id": row.id})
-
-    if (
-      len(request.args) == 2 and
-      request.args[1] == "chat" and
-      _method() == "POST"
-    ):
-        row = _conversation_or_404(request.args[0])
-        payload = _json_payload()
-        message = _validated_message(payload)
-        gateway_payload = dict(payload)
-        gateway_payload["message"] = message
-        gateway_payload["history"] = _history_messages(row.id)
-
-        try:
-            gateway_response = ai_gateway_chat(
-              session,
-              config_get,
-              gateway_payload,
-            )
-        except AiGatewayError as exc:
-            raise HTTP(exc.status_code, json.dumps({"error": exc.detail}))
-
-        if not isinstance(gateway_response, dict):
-            raise HTTP(502, json.dumps({"error": "Invalid AI gateway response"}))
-
-        now = request.now
-        user_message_id = db.ai_chat_message.insert(
-          conversation_id=row.id,
-          user_id=auth.user_id,
-          role="user",
-          content=_db_text(message),
-          created=now,
-        )
-        assistant_message_id = db.ai_chat_message.insert(
-          conversation_id=row.id,
-          user_id=auth.user_id,
-          role="assistant",
-          content=_db_text(gateway_response.get("message") or ""),
-          tool_calls=_json_dump_field(gateway_response.get("tool_calls")),
-          metadata=_json_dump_field({
-            "provider": gateway_response.get("provider"),
-            "model": gateway_response.get("model"),
-          }),
-          created=now,
-        )
-        row.update_record(updated=now)
-
-        gateway_response["conversation_id"] = row.id
-        gateway_response["user_message_id"] = user_message_id
-        gateway_response["assistant_message_id"] = assistant_message_id
-        return _json_response(gateway_response)
 
     if (
       len(request.args) == 3 and

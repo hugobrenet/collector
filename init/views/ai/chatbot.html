@@ -1047,25 +1047,11 @@
 		return message || "{{=T('New conversation')}}";
 	}
 
-	function sendConversationMessage(message) {
-		return $.ajax({
-			url: conversationUrl(currentConversationId, "chat"),
-			method: "POST",
-			contentType: "application/json",
-			dataType: "json",
-			data: JSON.stringify({
-				message: message
-			})
-		});
-	}
-
 	function sendConversationMessageStream(message, assistantMessage) {
 		if (!window.fetch || !window.TextDecoder || !window.ReadableStream) {
-			return sendConversationMessage(message).then(function(data) {
-				setAssistantMessageText(assistantMessage, responseText(data));
-				appendToolCalls(assistantMessage, responseToolCalls(data));
-				return data;
-			});
+			return $.Deferred().reject({
+				responseText: "{{=T('AI streaming is not supported by this browser.')}}"
+			}).promise();
 		}
 
 		var deferred = $.Deferred();
