@@ -377,6 +377,9 @@
 	var newButton = $("#ai-chat-new");
 	var status = $("#ai-chat-status");
 	var error = $("#ai-chat-error");
+	var responseTimerStartedAt = null;
+	var responseTimerInterval = null;
+	var responseTimerMessage = "";
 
 	function appendMessage(role, text, toolCalls) {
 		var msg = $("<div>").addClass("ai-chat-message").addClass(role);
@@ -417,6 +420,46 @@
 			.append($("<span>").addClass("ai-chat-thinking-dot"))
 			.append($("<span>").addClass("ai-chat-thinking-dot"));
 		messages.scrollTop(messages.prop("scrollHeight"));
+	}
+
+	function startResponseTimer(message) {
+		stopResponseTimer(false);
+		responseTimerStartedAt = new Date().getTime();
+		responseTimerMessage = message;
+		updateResponseTimerStatus();
+		responseTimerInterval = window.setInterval(updateResponseTimerStatus, 250);
+	}
+
+	function setResponseTimerMessage(message) {
+		if (!responseTimerStartedAt) {
+			status.text(message);
+			return;
+		}
+		responseTimerMessage = message;
+		updateResponseTimerStatus();
+	}
+
+	function stopResponseTimer(clearStatus) {
+		if (responseTimerInterval) {
+			window.clearInterval(responseTimerInterval);
+		}
+		responseTimerInterval = null;
+		responseTimerStartedAt = null;
+		responseTimerMessage = "";
+		if (clearStatus) {
+			status.text("");
+		}
+	}
+
+	function updateResponseTimerStatus() {
+		var elapsedSeconds;
+		if (!responseTimerStartedAt) {
+			return;
+		}
+		elapsedSeconds = Math.floor(
+			(new Date().getTime() - responseTimerStartedAt) / 1000
+		);
+		status.text(responseTimerMessage + " " + elapsedSeconds + "s");
 	}
 
 	function clearMessages() {
@@ -921,6 +964,9 @@
 	function setBusy(isBusy, message) {
 		button.prop("disabled", isBusy);
 		input.prop("disabled", isBusy);
+		if (!isBusy) {
+			stopResponseTimer(false);
+		}
 		status.text(isBusy ? (message || "{{=T('Waiting for LLM response...')}}") : "");
 	}
 
@@ -1042,7 +1088,7 @@
 				answer += data.content || "";
 				setAssistantMessageText(assistantMessage, answer);
 			} else if (eventName == "tool_call") {
-				status.text("{{=T('Using Collector tools...')}}");
+				setResponseTimerMessage("{{=T('Using Collector tools...')}}");
 				if (!answer) {
 					setAssistantMessageThinking(
 						assistantMessage,
@@ -1157,14 +1203,16 @@
 			createConversation(titleFromMessage(message))
 		).then(function() {
 			renderConversations();
+			startResponseTimer("{{=T('Thinking...')}}");
 			return sendConversationMessageStream(message, assistantMessage);
 		}).done(function(data) {
-				loadConversations();
+			loadConversations();
 		}).fail(function(xhr) {
-				error.text(errorText(xhr)).show();
+			error.text(errorText(xhr)).show();
 		}).always(function() {
-				setBusy(false);
-				input.focus();
+			stopResponseTimer(false);
+			setBusy(false);
+			input.focus();
 		});
 	});
 
