@@ -278,16 +278,6 @@
 .ai-chat-tool-status.error {
 	color: #9a1f1f;
 }
-.ai-chat-tool pre {
-	background: #fff;
-	border: 1px solid #ddd;
-	border-radius: 3px;
-	margin: 0.4em 0 0 0;
-	max-height: 16em;
-	overflow: auto;
-	padding: 0.55em;
-	white-space: pre;
-}
 .ai-chat-form {
 	display: flex;
 	gap: 0.8em;
@@ -598,14 +588,12 @@
 			var item = $("<div>").addClass("ai-chat-tool");
 			var name = $("<span>").addClass("ai-chat-tool-name");
 			var status = $("<span>").addClass("ai-chat-tool-status");
-			var args = $("<pre>");
 
 			name.text(tool.name);
 			status.addClass(tool.ok ? "ok" : "error");
 			status.text(tool.ok ? "ok" : "error");
-			args.text(valueText(sanitizeToolArguments(tool.arguments)));
 
-			item.append(name).append(status).append(args);
+			item.append(name).append(status);
 			details.append(item);
 		});
 
@@ -621,7 +609,6 @@
 		$.each(toolCalls, function(_, toolCall) {
 			var args;
 			var collectorToolName;
-			var collectorToolArgs;
 
 			if (!toolCall || typeof toolCall != "object") {
 				return;
@@ -632,47 +619,22 @@
 			}
 			if (toolCall.name == "call_tool") {
 				collectorToolName = args.name;
-				collectorToolArgs = args.arguments || {};
 				if (!collectorToolName) {
 					return;
 				}
 				normalized.push({
 					name: collectorToolName,
-					arguments: collectorToolArgs,
 					ok: toolCall.ok !== false
 				});
 				return;
 			}
 			normalized.push({
 				name: toolCall.name || "unknown_tool",
-				arguments: args,
 				ok: toolCall.ok !== false
 			});
 		});
 
 		return normalized;
-	}
-
-	function sanitizeToolArguments(value) {
-		var sensitive = /token|password|passwd|secret|api[_-]?key|authorization/i;
-
-		if ($.isArray(value)) {
-			return $.map(value, function(item) {
-				return sanitizeToolArguments(item);
-			});
-		}
-		if (value && typeof value == "object") {
-			var clean = {};
-			$.each(value, function(key, item) {
-				if (sensitive.test(key)) {
-					clean[key] = "***";
-				} else {
-					clean[key] = sanitizeToolArguments(item);
-				}
-			});
-			return clean;
-		}
-		return value;
 	}
 
 	function renderAssistantMessage(content, text) {

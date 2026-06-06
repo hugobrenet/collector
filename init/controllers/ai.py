@@ -83,7 +83,7 @@ def _message_dict(row):
       "conversation_id": row.conversation_id,
       "role": row.role,
       "content": row.content,
-      "tool_calls": _json_field(row.tool_calls),
+      "tool_calls": _tool_call_summaries(_json_field(row.tool_calls)),
       "metadata": _json_field(row.metadata),
       "created": _datetime_value(row.created),
     }
@@ -102,6 +102,36 @@ def _json_field(value):
         return json.loads(value)
     except Exception:
         return value
+
+
+def _tool_call_summaries(tool_calls):
+    if not isinstance(tool_calls, list):
+        return None
+
+    summaries = []
+    for tool_call in tool_calls:
+        if not isinstance(tool_call, dict):
+            continue
+
+        name = tool_call.get("name")
+        if name == "search_tools":
+            continue
+        if name == "call_tool":
+            arguments = tool_call.get("arguments") or {}
+            if isinstance(arguments, dict):
+                target_name = arguments.get("name")
+                if isinstance(target_name, string_types) and target_name.strip():
+                    name = target_name.strip()
+
+        if not isinstance(name, string_types) or not name.strip():
+            continue
+
+        summaries.append({
+          "name": name.strip(),
+          "ok": tool_call.get("ok") is not False,
+        })
+
+    return summaries or None
 
 
 def _clean_title(value):
@@ -328,13 +358,17 @@ def conversations():
 
         def on_done(gateway_response):
             now = request.now
+            tool_calls = _tool_call_summaries(
+              gateway_response.get("tool_calls")
+            ) or []
+            gateway_response["tool_calls"] = tool_calls
             assistant_message_id = _insert_chat_message(
               row.id,
               auth.user_id,
               "assistant",
               _db_text(gateway_response.get("message") or ""),
               now,
-              tool_calls=_json_dump_field(gateway_response.get("tool_calls")),
+              tool_calls=_json_dump_field(tool_calls) if tool_calls else None,
               metadata=_json_dump_field({
                 "provider": gateway_response.get("provider"),
                 "model": gateway_response.get("model"),
