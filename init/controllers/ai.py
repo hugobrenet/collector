@@ -12,6 +12,7 @@ from applications.init.modules.ai_llm_config import (
     DEFAULT_TOOL_RESULT_MAX_CHARS,
     LLM_PROVIDER_CHOICES,
     LLM_SELECTABLE_PROVIDER_VALUES,
+    ai_llm_decrypt_api_key,
     ai_llm_form_defaults,
     ai_llm_mask_api_key,
     ai_llm_store_values,
@@ -228,6 +229,18 @@ def _provider_select_widget(field, value, provider_options):
     return SELECT(*options, _name=field.name, _id=field_id)
 
 
+def _api_key_password_widget(field, value):
+    field_id = "%s_%s" % (getattr(field, "_tablename", "no_table"), field.name)
+    return INPUT(
+      _type="password",
+      _name=field.name,
+      _id=field_id,
+      _value=value or "",
+      _autocomplete="new-password",
+      _spellcheck="false",
+    )
+
+
 class _PersistingSseStream(object):
     def __init__(self, upstream, on_done):
         self.upstream = upstream
@@ -411,7 +424,13 @@ def conversations():
 def config():
     row = ai_llm_user_row(db, auth.user_id)
     defaults = ai_llm_form_defaults(row)
-    masked_api_key = ai_llm_mask_api_key(row.api_key if row is not None else None)
+    current_api_key = row.api_key if row is not None else None
+    try:
+        visible_api_key = ai_llm_decrypt_api_key(current_api_key)
+    except RuntimeError as exc:
+        visible_api_key = ""
+        response.flash = T(str(exc))
+    masked_api_key = ai_llm_mask_api_key(visible_api_key)
     provider_options = [
       (
         item[0],
@@ -454,16 +473,16 @@ def config():
       ),
       Field(
         "api_key",
-        "string",
+        "password",
         default=masked_api_key,
         label=T("API key"),
         requires=IS_EMPTY_OR(IS_LENGTH(4096)),
+        widget=_api_key_password_widget,
       ),
       submit_button=T("Save"),
     )
 
     if form.process().accepted:
-        current_api_key = row.api_key if row is not None else None
         if form.vars.api_key == masked_api_key:
             form.vars.api_key = ""
         form.vars.temperature = None
@@ -473,18 +492,22 @@ def config():
         )
         form.vars.max_tool_iterations = DEFAULT_MAX_TOOL_ITERATIONS
         form.vars.tool_result_max_chars = DEFAULT_TOOL_RESULT_MAX_CHARS
-        values = ai_llm_store_values(
-          form.vars,
-          current_api_key=current_api_key,
-        )
-        values["user_id"] = auth.user_id
-        values["updated"] = request.now
-        db.ai_llm_user_config.update_or_insert(
-          {"user_id": auth.user_id},
-          **values
-        )
-        session.flash = T("Saved")
-        redirect(URL("ai", "config"))
+        try:
+            values = ai_llm_store_values(
+              form.vars,
+              current_api_key=current_api_key,
+            )
+        except RuntimeError as exc:
+            response.flash = T(str(exc))
+        else:
+            values["user_id"] = auth.user_id
+            values["updated"] = request.now
+            db.ai_llm_user_config.update_or_insert(
+              {"user_id": auth.user_id},
+              **values
+            )
+            session.flash = T("Saved")
+            redirect(URL("ai", "config"))
 
     return dict(
       form=form,

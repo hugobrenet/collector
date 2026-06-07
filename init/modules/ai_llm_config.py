@@ -1,3 +1,15 @@
+import base64
+import hashlib
+
+from applications.init.modules.aconfig import config_get
+
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+except ImportError:
+    Fernet = None
+    InvalidToken = Exception
+
+
 LLM_PROVIDER_CHOICES = [
     ("openai_compatible", "OpenAI-compatible"),
     ("anthropic", "Anthropic"),
@@ -10,6 +22,7 @@ DEFAULT_PROVIDER = "openai_compatible"
 DEFAULT_COMPLETION_TOKEN_PARAMETER = "max_completion_tokens"
 DEFAULT_MAX_TOOL_ITERATIONS = 5
 DEFAULT_TOOL_RESULT_MAX_CHARS = 20000
+API_KEY_ENCRYPTION_PREFIX = "fernet:v1:"
 SYSTEM_PROMPT = (
     "You are an OpenSVC operations assistant. Answer infrastructure questions "
     "using the OpenSVC MCP tools when live collector data is needed. Discover "
@@ -33,6 +46,58 @@ def _strip(value):
     if isinstance(value, string_types):
         return value.strip()
     return str(value).strip()
+
+
+def _api_key_encryption_secret():
+    return _strip(config_get("ai_llm_api_key_encryption_key", ""))
+
+
+def _fernet():
+    secret = _api_key_encryption_secret()
+    if secret == "":
+        return None
+    if Fernet is None:
+        raise RuntimeError("cryptography is required to decrypt AI LLM API keys")
+
+    secret_bytes = secret.encode("utf-8")
+    try:
+        return Fernet(secret_bytes)
+    except Exception:
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret_bytes).digest())
+        return Fernet(key)
+
+
+def ai_llm_api_key_is_encrypted(api_key):
+    return _strip(api_key).startswith(API_KEY_ENCRYPTION_PREFIX)
+
+
+def ai_llm_encrypt_api_key(api_key):
+    api_key = _strip(api_key)
+    if api_key == "" or ai_llm_api_key_is_encrypted(api_key):
+        return api_key
+
+    fernet = _fernet()
+    if fernet is None:
+        raise RuntimeError("AI LLM API key encryption key is not configured")
+
+    token = fernet.encrypt(api_key.encode("utf-8")).decode("ascii")
+    return API_KEY_ENCRYPTION_PREFIX + token
+
+
+def ai_llm_decrypt_api_key(api_key):
+    api_key = _strip(api_key)
+    if api_key == "" or not ai_llm_api_key_is_encrypted(api_key):
+        return api_key
+
+    fernet = _fernet()
+    if fernet is None:
+        raise RuntimeError("AI LLM API key encryption key is not configured")
+
+    token = api_key[len(API_KEY_ENCRYPTION_PREFIX):].encode("ascii")
+    try:
+        return fernet.decrypt(token).decode("utf-8")
+    except InvalidToken:
+        raise RuntimeError("AI LLM API key can not be decrypted")
 
 
 def _int_or_none(value):
@@ -104,6 +169,7 @@ def ai_llm_store_values(vars, current_api_key=None):
     api_key = _strip(getattr(vars, "api_key", ""))
     if api_key == "":
         api_key = current_api_key
+    api_key = ai_llm_encrypt_api_key(api_key)
 
     return dict(
       provider=_strip(getattr(vars, "provider", "")) or DEFAULT_PROVIDER,
@@ -136,11 +202,13 @@ def ai_llm_gateway_config(row):
     if not base_url or not model:
         return None
 
+    api_key = ai_llm_decrypt_api_key(row.api_key)
+
     return dict(
       provider=row.provider or DEFAULT_PROVIDER,
       base_url=base_url,
       model=model,
-      api_key=row.api_key or None,
+      api_key=api_key or None,
       system_prompt=SYSTEM_PROMPT,
       temperature=row.temperature,
       max_tokens=row.max_tokens,

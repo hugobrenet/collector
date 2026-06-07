@@ -224,6 +224,7 @@ ai_llm_provider = "openai_compatible"
 ai_llm_base_url = ""
 ai_llm_model = ""
 ai_llm_api_key = ""
+ai_llm_api_key_encryption_key = ""
 ai_llm_system_prompt = ""
 ai_llm_temperature = None
 ai_llm_max_tokens = None
