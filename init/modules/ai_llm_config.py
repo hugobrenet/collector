@@ -10,19 +10,64 @@ except ImportError:
     InvalidToken = Exception
 
 
-LLM_PROVIDER_CHOICES = [
-    ("openai_compatible", "OpenAI-compatible"),
-    ("anthropic", "Anthropic"),
-    ("gemini", "Gemini"),
-    ("mistral", "Mistral"),
-    ("azure_openai", "Azure OpenAI"),
-]
-LLM_SELECTABLE_PROVIDER_VALUES = ("openai_compatible", "anthropic")
 DEFAULT_PROVIDER = "openai_compatible"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_COMPLETION_TOKEN_PARAMETER = "max_completion_tokens"
 DEFAULT_MAX_TOOL_ITERATIONS = 5
 DEFAULT_TOOL_RESULT_MAX_CHARS = 20000
 API_KEY_ENCRYPTION_PREFIX = "fernet:v1:"
+LLM_MODEL_CATALOG = [
+    {
+      "model": "gpt-5-mini",
+      "label": "OpenAI - GPT-5 mini",
+      "provider": "openai_compatible",
+      "base_url": DEFAULT_OPENAI_BASE_URL,
+    },
+    {
+      "model": "gpt-5.2",
+      "label": "OpenAI - GPT-5.2",
+      "provider": "openai_compatible",
+      "base_url": DEFAULT_OPENAI_BASE_URL,
+    },
+    {
+      "model": "gpt-4.1-mini",
+      "label": "OpenAI - GPT-4.1 mini",
+      "provider": "openai_compatible",
+      "base_url": DEFAULT_OPENAI_BASE_URL,
+    },
+    {
+      "model": "gpt-4.1",
+      "label": "OpenAI - GPT-4.1",
+      "provider": "openai_compatible",
+      "base_url": DEFAULT_OPENAI_BASE_URL,
+    },
+    {
+      "model": "gpt-4o-mini",
+      "label": "OpenAI - GPT-4o mini",
+      "provider": "openai_compatible",
+      "base_url": DEFAULT_OPENAI_BASE_URL,
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "label": "Anthropic - Claude Sonnet 4.6",
+      "provider": "anthropic",
+      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
+    },
+    {
+      "model": "claude-opus-4-6",
+      "label": "Anthropic - Claude Opus 4.6",
+      "provider": "anthropic",
+      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
+    },
+    {
+      "model": "claude-sonnet-4-20250514",
+      "label": "Anthropic - Claude Sonnet 4",
+      "provider": "anthropic",
+      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
+    },
+]
 SYSTEM_PROMPT = (
     "You are an OpenSVC operations assistant. Answer infrastructure questions "
     "using the OpenSVC MCP tools when live collector data is needed. Discover "
@@ -121,6 +166,21 @@ def _int_or_default(value, default):
     return value
 
 
+def ai_llm_model_choices():
+    return [
+      (item["model"], item["label"])
+      for item in LLM_MODEL_CATALOG
+    ]
+
+
+def ai_llm_model_config(model):
+    model = _strip(model)
+    for item in LLM_MODEL_CATALOG:
+        if item["model"] == model:
+            return item
+    return None
+
+
 def ai_llm_user_row(db, user_id):
     q = db.ai_llm_user_config.user_id == user_id
     return db(q).select(db.ai_llm_user_config.ALL, limitby=(0, 1)).first()
@@ -139,8 +199,8 @@ def ai_llm_form_defaults(row):
     if row is None:
         return dict(
           provider=DEFAULT_PROVIDER,
-          base_url="",
-          model="",
+          base_url=DEFAULT_OPENAI_BASE_URL,
+          model=DEFAULT_MODEL,
           temperature=None,
           max_tokens=None,
           completion_token_parameter=DEFAULT_COMPLETION_TOKEN_PARAMETER,
@@ -166,15 +226,20 @@ def ai_llm_form_defaults(row):
 
 
 def ai_llm_store_values(vars, current_api_key=None):
+    model = _strip(getattr(vars, "model", "")) or DEFAULT_MODEL
+    model_config = ai_llm_model_config(model)
+    if model_config is None:
+        raise RuntimeError("Unsupported AI LLM model")
+
     api_key = _strip(getattr(vars, "api_key", ""))
     if api_key == "":
         api_key = current_api_key
     api_key = ai_llm_encrypt_api_key(api_key)
 
     return dict(
-      provider=_strip(getattr(vars, "provider", "")) or DEFAULT_PROVIDER,
-      base_url=_strip(getattr(vars, "base_url", "")),
-      model=_strip(getattr(vars, "model", "")),
+      provider=model_config["provider"],
+      base_url=model_config["base_url"],
+      model=model,
       api_key=api_key,
       temperature=_float_or_none(getattr(vars, "temperature", None)),
       max_tokens=_int_or_none(getattr(vars, "max_tokens", None)),
@@ -197,15 +262,22 @@ def ai_llm_gateway_config(row):
     if row is None:
         return None
 
-    base_url = _strip(row.base_url)
     model = _strip(row.model)
+    model_config = ai_llm_model_config(model)
+    if model_config is not None:
+        provider = model_config["provider"]
+        base_url = model_config["base_url"]
+    else:
+        provider = row.provider or DEFAULT_PROVIDER
+        base_url = _strip(row.base_url)
+
     if not base_url or not model:
         return None
 
     api_key = ai_llm_decrypt_api_key(row.api_key)
 
     return dict(
-      provider=row.provider or DEFAULT_PROVIDER,
+      provider=provider,
       base_url=base_url,
       model=model,
       api_key=api_key or None,

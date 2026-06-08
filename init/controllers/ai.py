@@ -10,11 +10,10 @@ from applications.init.modules.ai_llm_config import (
     DEFAULT_COMPLETION_TOKEN_PARAMETER,
     DEFAULT_MAX_TOOL_ITERATIONS,
     DEFAULT_TOOL_RESULT_MAX_CHARS,
-    LLM_PROVIDER_CHOICES,
-    LLM_SELECTABLE_PROVIDER_VALUES,
     ai_llm_decrypt_api_key,
     ai_llm_form_defaults,
     ai_llm_mask_api_key,
+    ai_llm_model_choices,
     ai_llm_store_values,
     ai_llm_user_row,
 )
@@ -211,20 +210,17 @@ def _insert_chat_message(
     return db._adapter.cursor.lastrowid
 
 
-def _provider_select_widget(field, value, provider_options):
-    active_values = [item[0] for item in provider_options if item[2]]
-    if value not in active_values:
-        value = active_values[0]
-
+def _model_select_widget(field, value, model_options):
     field_id = "%s_%s" % (getattr(field, "_tablename", "no_table"), field.name)
     options = []
-    for provider, label, enabled in provider_options:
-        attrs = {"_value": provider}
-        if provider == value:
+    active_values = [item[0] for item in model_options]
+    if value not in active_values and active_values:
+        value = active_values[0]
+
+    for model, label in model_options:
+        attrs = {"_value": model}
+        if model == value:
             attrs["_selected"] = "selected"
-        if not enabled:
-            attrs["_disabled"] = "disabled"
-            attrs["_title"] = T("Provider adapter not enabled yet")
         options.append(OPTION(label, **attrs))
     return SELECT(*options, _name=field.name, _id=field_id)
 
@@ -431,45 +427,23 @@ def config():
         visible_api_key = ""
         response.flash = T(str(exc))
     masked_api_key = ai_llm_mask_api_key(visible_api_key)
-    provider_options = [
-      (
-        item[0],
-        T(item[1]),
-        item[0] in LLM_SELECTABLE_PROVIDER_VALUES,
-      )
-      for item in LLM_PROVIDER_CHOICES
-    ]
-    provider_values = [item[0] for item in provider_options if item[2]]
-    provider_labels = [item[1] for item in provider_options if item[2]]
+    model_options = ai_llm_model_choices()
+    model_values = [item[0] for item in model_options]
+    model_labels = [item[1] for item in model_options]
 
     form = SQLFORM.factory(
-      Field(
-        "provider",
-        "string",
-        default=defaults["provider"],
-        label=T("Provider"),
-        requires=IS_IN_SET(provider_values, labels=provider_labels, zero=None),
-        widget=lambda field, value: _provider_select_widget(
-          field,
-          value,
-          provider_options,
-        ),
-      ),
-      Field(
-        "base_url",
-        "string",
-        length=512,
-        default=defaults["base_url"],
-        label=T("API base URL"),
-        requires=IS_NOT_EMPTY(),
-      ),
       Field(
         "model",
         "string",
         length=128,
         default=defaults["model"],
         label=T("Model"),
-        requires=IS_NOT_EMPTY(),
+        requires=IS_IN_SET(model_values, labels=model_labels, zero=None),
+        widget=lambda field, value: _model_select_widget(
+          field,
+          value,
+          model_options,
+        ),
       ),
       Field(
         "api_key",
