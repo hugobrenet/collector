@@ -75,8 +75,19 @@ SYSTEM_PROMPT = (
     "appropriate tool with valid arguments before giving a factual answer. "
     "Never invent node, service, cluster, or compliance information. If the "
     "tool data is missing, ambiguous, or returns an error, explain that clearly "
-    "and ask for the missing identifier. Do not expose secrets, API keys, "
-    "tokens, or internal implementation details."
+    "and ask for the missing identifier. Before calling any MCP tool that "
+    "creates, updates, deletes, executes, or otherwise changes Collector state, "
+    "first resolve and summarize the exact target objects and intended changes, "
+    "then ask the user for an explicit confirmation in a new message. Do not "
+    "call the state-changing tool in the same turn as the initial request or "
+    "after only self-resolving identifiers. When the selected tool schema "
+    "requires request.confirmation.phrase, generate a concise phrase, show it "
+    "to the user, wait for the user to repeat it verbatim in a new message, "
+    "then set request.confirmation.phrase to that exact phrase. For destructive "
+    "actions, the confirmation must include the exact stable identifier required "
+    "by the tool when one exists, such as a Collector node_id for node deletion. "
+    "Do not "
+    "expose secrets, API keys, tokens, or internal implementation details."
 )
 
 try:
