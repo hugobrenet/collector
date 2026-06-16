@@ -140,13 +140,6 @@ def _int_or_none(value):
         return None
 
 
-def _float_or_none(value):
-    value = _strip(value)
-    if value == "":
-        return None
-    return float(value)
-
-
 def _int_or_default(value, default):
     value = _int_or_none(value)
     if value is None:
@@ -219,11 +212,7 @@ def ai_llm_form_defaults(row, deployment_rows=None):
     deployment_id = getattr(row, "deployment_id", None) if row is not None else None
     if deployment_id is None and deployment_rows:
         deployment_id = deployment_rows[0].id
-    return dict(
-      deployment_id=deployment_id,
-      temperature=getattr(row, "temperature", None) if row is not None else None,
-      max_tokens=getattr(row, "max_tokens", None) if row is not None else None,
-    )
+    return dict(deployment_id=deployment_id)
 
 
 def ai_llm_deployment_defaults(row=None):
@@ -283,21 +272,7 @@ def ai_llm_store_values(db, vars, current_api_key=None):
 
     return dict(
       deployment_id=deployment.id,
-      provider=deployment.provider_adapter,
-      base_url=deployment.base_url,
-      model=deployment.model,
       api_key=api_key,
-      temperature=_float_or_none(getattr(vars, "temperature", None)),
-      max_tokens=_int_or_none(getattr(vars, "max_tokens", None)),
-      completion_token_parameter=(
-        deployment.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
-      ),
-      max_tool_iterations=(
-        deployment.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS
-      ),
-      tool_result_max_chars=(
-        deployment.tool_result_max_chars or DEFAULT_TOOL_RESULT_MAX_CHARS
-      ),
     )
 
 
@@ -388,8 +363,8 @@ def ai_llm_gateway_config(db, row):
       model=model,
       api_key=api_key or None,
       system_prompt=SYSTEM_PROMPT,
-      temperature=row.temperature,
-      max_tokens=row.max_tokens,
+      temperature=None,
+      max_tokens=None,
       completion_token_parameter=(
         deployment.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
       ),

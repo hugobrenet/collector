@@ -7014,18 +7014,11 @@ alter table svcmon modify column mon_availstatus enum('up','down','warn','n/a','
 CREATE TABLE IF NOT EXISTS `ai_llm_user_config` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
-  `provider` varchar(64) DEFAULT 'openai_compatible',
-  `base_url` varchar(512) DEFAULT NULL,
-  `model` varchar(128) DEFAULT NULL,
+  `deployment_id` int(11) DEFAULT NULL,
   `api_key` text DEFAULT NULL,
-  `temperature` double DEFAULT NULL,
-  `max_tokens` int(11) DEFAULT NULL,
-  `completion_token_parameter` varchar(64) DEFAULT 'max_completion_tokens',
-  `max_tool_iterations` int(11) DEFAULT 5,
-  `tool_result_max_chars` int(11) DEFAULT 20000,
-  `updated` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `ai_llm_user_config_user_id` (`user_id`)
+  UNIQUE KEY `ai_llm_user_config_user_id` (`user_id`),
+  KEY `ai_llm_user_config_deployment_id` (`deployment_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `ai_chat_conversation` (
@@ -7099,6 +7092,4 @@ CREATE TABLE IF NOT EXISTS `ai_llm_deployment` (
   KEY `ai_llm_deployment_enabled_order` (`enabled`, `sort_order`, `label`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `ai_llm_user_config`
-  ADD COLUMN `deployment_id` int(11) DEFAULT NULL AFTER `user_id`,
-  ADD KEY `ai_llm_user_config_deployment_id` (`deployment_id`);
+-- ai_llm_user_config stores only the user-selected deployment and API key.

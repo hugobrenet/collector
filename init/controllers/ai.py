@@ -489,8 +489,6 @@ def config():
     if form.process().accepted:
         if form.vars.api_key == masked_api_key:
             form.vars.api_key = ""
-        form.vars.temperature = None
-        form.vars.max_tokens = None
         try:
             values = ai_llm_store_values(
               db,
@@ -501,7 +499,6 @@ def config():
             response.flash = T(str(exc))
         else:
             values["user_id"] = auth.user_id
-            values["updated"] = request.now
             db.ai_llm_user_config.update_or_insert(
               {"user_id": auth.user_id},
               **values
@@ -541,11 +538,7 @@ def deployment_delete():
     if user_refs:
         db(db.ai_llm_user_config.deployment_id == row.id).update(
           deployment_id=None,
-          provider=None,
-          base_url=None,
-          model=None,
           api_key=None,
-          updated=request.now,
         )
 
     row.delete_record()
