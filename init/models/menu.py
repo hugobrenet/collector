@@ -62,6 +62,7 @@ menu_entries = [
   'adm-filters',
   'adm-filtersets',
   'adm-forms',
+  'adm-ai-llm',
   'adm-metrics',
   'adm-charts',
   'adm-reports',

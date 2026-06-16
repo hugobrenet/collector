@@ -18,56 +18,22 @@ DEFAULT_COMPLETION_TOKEN_PARAMETER = "max_completion_tokens"
 DEFAULT_MAX_TOOL_ITERATIONS = 5
 DEFAULT_TOOL_RESULT_MAX_CHARS = 20000
 API_KEY_ENCRYPTION_PREFIX = "fernet:v1:"
-LLM_MODEL_CATALOG = [
-    {
-      "model": "gpt-5-mini",
-      "label": "OpenAI - GPT-5 mini",
-      "provider": "openai_compatible",
-      "base_url": DEFAULT_OPENAI_BASE_URL,
-    },
-    {
-      "model": "gpt-5.2",
-      "label": "OpenAI - GPT-5.2",
-      "provider": "openai_compatible",
-      "base_url": DEFAULT_OPENAI_BASE_URL,
-    },
-    {
-      "model": "gpt-4.1-mini",
-      "label": "OpenAI - GPT-4.1 mini",
-      "provider": "openai_compatible",
-      "base_url": DEFAULT_OPENAI_BASE_URL,
-    },
-    {
-      "model": "gpt-4.1",
-      "label": "OpenAI - GPT-4.1",
-      "provider": "openai_compatible",
-      "base_url": DEFAULT_OPENAI_BASE_URL,
-    },
-    {
-      "model": "gpt-4o-mini",
-      "label": "OpenAI - GPT-4o mini",
-      "provider": "openai_compatible",
-      "base_url": DEFAULT_OPENAI_BASE_URL,
-    },
-    {
-      "model": "claude-sonnet-4-6",
-      "label": "Anthropic - Claude Sonnet 4.6",
-      "provider": "anthropic",
-      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
-    },
-    {
-      "model": "claude-opus-4-6",
-      "label": "Anthropic - Claude Opus 4.6",
-      "provider": "anthropic",
-      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
-    },
-    {
-      "model": "claude-sonnet-4-20250514",
-      "label": "Anthropic - Claude Sonnet 4",
-      "provider": "anthropic",
-      "base_url": DEFAULT_ANTHROPIC_BASE_URL,
-    },
+
+LLM_PROVIDER_ADAPTERS = [
+    ("openai_compatible", "OpenAI-compatible"),
+    ("anthropic", "Anthropic"),
 ]
+LLM_AUTH_MODES = [
+    ("user_api_key", "User API key"),
+    ("shared_api_key", "Shared API key"),
+    ("no_api_key", "No API key"),
+]
+LLM_COMPLETION_TOKEN_PARAMETERS = [
+    ("max_completion_tokens", "max_completion_tokens"),
+    ("max_tokens", "max_tokens"),
+]
+
+
 SYSTEM_PROMPT = (
     "You are an OpenSVC operations assistant. Answer infrastructure questions "
     "using the OpenSVC MCP tools when live collector data is needed. Discover "
@@ -168,7 +134,10 @@ def _int_or_none(value):
     value = _strip(value)
     if value == "":
         return None
-    return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _float_or_none(value):
@@ -185,24 +154,56 @@ def _int_or_default(value, default):
     return value
 
 
-def ai_llm_model_choices():
-    return [
-      (item["model"], item["label"])
-      for item in LLM_MODEL_CATALOG
-    ]
+def _choice_values(choices):
+    return [item[0] for item in choices]
 
 
-def ai_llm_model_config(model):
-    model = _strip(model)
-    for item in LLM_MODEL_CATALOG:
-        if item["model"] == model:
-            return item
-    return None
+def _bool_value(value):
+    if isinstance(value, string_types):
+        return value.strip().lower() in ("1", "true", "t", "yes", "on")
+    return bool(value)
+
+
+def ai_llm_provider_choices():
+    return list(LLM_PROVIDER_ADAPTERS)
+
+
+def ai_llm_auth_mode_choices():
+    return list(LLM_AUTH_MODES)
+
+
+def ai_llm_completion_token_parameter_choices():
+    return list(LLM_COMPLETION_TOKEN_PARAMETERS)
 
 
 def ai_llm_user_row(db, user_id):
     q = db.ai_llm_user_config.user_id == user_id
     return db(q).select(db.ai_llm_user_config.ALL, limitby=(0, 1)).first()
+
+
+def ai_llm_deployment_row(db, deployment_id, enabled_only=False):
+    deployment_id = _int_or_none(deployment_id)
+    if deployment_id is None:
+        return None
+    q = db.ai_llm_deployment.id == deployment_id
+    if enabled_only:
+        q &= db.ai_llm_deployment.enabled == True
+    return db(q).select(db.ai_llm_deployment.ALL, limitby=(0, 1)).first()
+
+
+def ai_llm_enabled_deployment_rows(db):
+    q = db.ai_llm_deployment.enabled == True
+    return db(q).select(
+      db.ai_llm_deployment.ALL,
+      orderby=(db.ai_llm_deployment.sort_order|db.ai_llm_deployment.label),
+    )
+
+
+def ai_llm_deployment_choices(rows):
+    return [
+      (str(row.id), row.label or row.name or str(row.id))
+      for row in rows
+    ]
 
 
 def ai_llm_mask_api_key(api_key, visible=5):
@@ -214,58 +215,134 @@ def ai_llm_mask_api_key(api_key, visible=5):
     return ("*" * (len(api_key) - visible)) + api_key[-visible:]
 
 
-def ai_llm_form_defaults(row):
+def ai_llm_form_defaults(row, deployment_rows=None):
+    deployment_id = getattr(row, "deployment_id", None) if row is not None else None
+    if deployment_id is None and deployment_rows:
+        deployment_id = deployment_rows[0].id
+    return dict(
+      deployment_id=deployment_id,
+      temperature=getattr(row, "temperature", None) if row is not None else None,
+      max_tokens=getattr(row, "max_tokens", None) if row is not None else None,
+    )
+
+
+def ai_llm_deployment_defaults(row=None):
     if row is None:
         return dict(
-          provider=DEFAULT_PROVIDER,
-          base_url=DEFAULT_OPENAI_BASE_URL,
-          model=DEFAULT_MODEL,
-          temperature=None,
-          max_tokens=None,
+          name="",
+          label="",
+          provider_adapter=DEFAULT_PROVIDER,
+          base_url="",
+          model="",
+          auth_mode="user_api_key",
+          enabled=False,
+          sort_order=0,
           completion_token_parameter=DEFAULT_COMPLETION_TOKEN_PARAMETER,
           max_tool_iterations=DEFAULT_MAX_TOOL_ITERATIONS,
           tool_result_max_chars=DEFAULT_TOOL_RESULT_MAX_CHARS,
         )
     return dict(
-      provider=row.provider or DEFAULT_PROVIDER,
+      name=row.name or "",
+      label=row.label or "",
+      provider_adapter=row.provider_adapter or DEFAULT_PROVIDER,
       base_url=row.base_url or "",
       model=row.model or "",
-      temperature=row.temperature,
-      max_tokens=row.max_tokens,
+      auth_mode=row.auth_mode or "user_api_key",
+      enabled=_bool_value(row.enabled),
+      sort_order=row.sort_order or 0,
       completion_token_parameter=(
         row.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
       ),
-      max_tool_iterations=(
-        row.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS
-      ),
+      max_tool_iterations=row.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS,
       tool_result_max_chars=(
         row.tool_result_max_chars or DEFAULT_TOOL_RESULT_MAX_CHARS
       ),
     )
 
 
-def ai_llm_store_values(vars, current_api_key=None):
-    model = _strip(getattr(vars, "model", "")) or DEFAULT_MODEL
-    model_config = ai_llm_model_config(model)
-    if model_config is None:
-        raise RuntimeError("Unsupported AI LLM model")
+def ai_llm_store_values(db, vars, current_api_key=None):
+    deployment = ai_llm_deployment_row(
+      db,
+      getattr(vars, "deployment_id", None),
+      enabled_only=True,
+    )
+    if deployment is None:
+        raise RuntimeError("Selected AI LLM deployment is not available")
 
-    api_key = _strip(getattr(vars, "api_key", ""))
-    if api_key == "":
-        api_key = current_api_key
-    api_key = ai_llm_encrypt_api_key(api_key)
+    auth_mode = deployment.auth_mode or "user_api_key"
+    api_key = None
+    if auth_mode == "user_api_key":
+        api_key = _strip(getattr(vars, "api_key", ""))
+        if api_key == "":
+            api_key = current_api_key
+        api_key = ai_llm_encrypt_api_key(api_key)
+        if _strip(api_key) == "":
+            raise RuntimeError("An API key is required for this AI LLM deployment")
+    elif auth_mode not in _choice_values(LLM_AUTH_MODES):
+        raise RuntimeError("Unsupported AI LLM auth mode")
 
     return dict(
-      provider=model_config["provider"],
-      base_url=model_config["base_url"],
-      model=model,
+      deployment_id=deployment.id,
+      provider=deployment.provider_adapter,
+      base_url=deployment.base_url,
+      model=deployment.model,
       api_key=api_key,
       temperature=_float_or_none(getattr(vars, "temperature", None)),
       max_tokens=_int_or_none(getattr(vars, "max_tokens", None)),
       completion_token_parameter=(
-        _strip(getattr(vars, "completion_token_parameter", ""))
-        or DEFAULT_COMPLETION_TOKEN_PARAMETER
+        deployment.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
       ),
+      max_tool_iterations=(
+        deployment.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS
+      ),
+      tool_result_max_chars=(
+        deployment.tool_result_max_chars or DEFAULT_TOOL_RESULT_MAX_CHARS
+      ),
+    )
+
+
+def ai_llm_store_deployment_values(vars, current_api_key=None):
+    provider_adapter = _strip(getattr(vars, "provider_adapter", ""))
+    auth_mode = _strip(getattr(vars, "auth_mode", ""))
+    completion_token_parameter = (
+      _strip(getattr(vars, "completion_token_parameter", "")) or
+      DEFAULT_COMPLETION_TOKEN_PARAMETER
+    )
+
+    if provider_adapter not in _choice_values(LLM_PROVIDER_ADAPTERS):
+        raise RuntimeError("Unsupported AI LLM provider adapter")
+    if auth_mode not in _choice_values(LLM_AUTH_MODES):
+        raise RuntimeError("Unsupported AI LLM auth mode")
+    if completion_token_parameter not in _choice_values(LLM_COMPLETION_TOKEN_PARAMETERS):
+        raise RuntimeError("Unsupported completion token parameter")
+
+    name = _strip(getattr(vars, "name", ""))
+    label = _strip(getattr(vars, "label", ""))
+    base_url = _strip(getattr(vars, "base_url", ""))
+    model = _strip(getattr(vars, "model", ""))
+    if not name or not label or not base_url or not model:
+        raise RuntimeError("Name, label, base URL, and model are required")
+
+    api_key = None
+    if auth_mode == "shared_api_key":
+        api_key = _strip(getattr(vars, "api_key", ""))
+        if api_key == "":
+            api_key = current_api_key
+        api_key = ai_llm_encrypt_api_key(api_key)
+        if _strip(api_key) == "":
+            raise RuntimeError("A shared API key is required for this deployment")
+
+    return dict(
+      name=name,
+      label=label,
+      provider_adapter=provider_adapter,
+      base_url=base_url,
+      model=model,
+      auth_mode=auth_mode,
+      api_key=api_key,
+      enabled=_bool_value(getattr(vars, "enabled", False)),
+      sort_order=_int_or_default(getattr(vars, "sort_order", None), 0),
+      completion_token_parameter=completion_token_parameter,
       max_tool_iterations=_int_or_default(
         getattr(vars, "max_tool_iterations", None),
         DEFAULT_MAX_TOOL_ITERATIONS,
@@ -277,23 +354,33 @@ def ai_llm_store_values(vars, current_api_key=None):
     )
 
 
-def ai_llm_gateway_config(row):
+def ai_llm_gateway_config(db, row):
     if row is None:
         return None
 
-    model = _strip(row.model)
-    model_config = ai_llm_model_config(model)
-    if model_config is not None:
-        provider = model_config["provider"]
-        base_url = model_config["base_url"]
-    else:
-        provider = row.provider or DEFAULT_PROVIDER
-        base_url = _strip(row.base_url)
+    deployment = ai_llm_deployment_row(db, row.deployment_id, enabled_only=True)
+    if deployment is None:
+        return None
 
+    provider = deployment.provider_adapter or DEFAULT_PROVIDER
+    base_url = _strip(deployment.base_url)
+    model = _strip(deployment.model)
     if not base_url or not model:
         return None
 
-    api_key = ai_llm_decrypt_api_key(row.api_key)
+    auth_mode = deployment.auth_mode or "user_api_key"
+    if auth_mode == "user_api_key":
+        api_key = ai_llm_decrypt_api_key(row.api_key)
+        if _strip(api_key) == "":
+            return None
+    elif auth_mode == "shared_api_key":
+        api_key = ai_llm_decrypt_api_key(deployment.api_key)
+        if _strip(api_key) == "":
+            return None
+    elif auth_mode == "no_api_key":
+        api_key = None
+    else:
+        raise RuntimeError("Unsupported AI LLM auth mode")
 
     return dict(
       provider=provider,
@@ -304,12 +391,12 @@ def ai_llm_gateway_config(row):
       temperature=row.temperature,
       max_tokens=row.max_tokens,
       completion_token_parameter=(
-        row.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
+        deployment.completion_token_parameter or DEFAULT_COMPLETION_TOKEN_PARAMETER
       ),
       max_tool_iterations=(
-        row.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS
+        deployment.max_tool_iterations or DEFAULT_MAX_TOOL_ITERATIONS
       ),
       tool_result_max_chars=(
-        row.tool_result_max_chars or DEFAULT_TOOL_RESULT_MAX_CHARS
+        deployment.tool_result_max_chars or DEFAULT_TOOL_RESULT_MAX_CHARS
       ),
     )

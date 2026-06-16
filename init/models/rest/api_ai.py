@@ -23,7 +23,7 @@ class rest_get_ai_llm_config(rest_get_handler):
         _require_ai_gateway_token()
 
         try:
-            data = ai_llm_gateway_config(ai_llm_user_row(db, auth.user_id))
+            data = ai_llm_gateway_config(db, ai_llm_user_row(db, auth.user_id))
         except RuntimeError as exc:
             raise HTTP(503, str(exc))
         if data is None:

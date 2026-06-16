@@ -7072,3 +7072,33 @@ alter table tags drop column tag_id;
 alter table tags change new_tag_id tag_id char(36) CHARACTER SET ascii COLLATE ascii_general_ci default UUID();
 alter table node_tags modify column tag_id char(36) CHARACTER SET ascii COLLATE ascii_general_ci;
 alter table svc_tags modify column tag_id char(36) CHARACTER SET ascii COLLATE ascii_general_ci;
+
+
+-- 2026-06-16
+-- AI LLM deployments: admin-managed profiles. No deployment is enabled by
+-- default; users can only select enabled rows created by a Manager.
+
+CREATE TABLE IF NOT EXISTS `ai_llm_deployment` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(128) NOT NULL,
+  `label` varchar(255) NOT NULL,
+  `provider_adapter` varchar(64) NOT NULL,
+  `base_url` varchar(512) NOT NULL,
+  `model` varchar(128) NOT NULL,
+  `auth_mode` varchar(32) NOT NULL DEFAULT 'user_api_key',
+  `api_key` text DEFAULT NULL,
+  `enabled` varchar(1) DEFAULT 'F',
+  `sort_order` int(11) DEFAULT 0,
+  `completion_token_parameter` varchar(64) DEFAULT 'max_completion_tokens',
+  `max_tool_iterations` int(11) DEFAULT 5,
+  `tool_result_max_chars` int(11) DEFAULT 20000,
+  `created` datetime DEFAULT NULL,
+  `updated` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ai_llm_deployment_name` (`name`),
+  KEY `ai_llm_deployment_enabled_order` (`enabled`, `sort_order`, `label`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `ai_llm_user_config`
+  ADD COLUMN `deployment_id` int(11) DEFAULT NULL AFTER `user_id`,
+  ADD KEY `ai_llm_user_config_deployment_id` (`deployment_id`);

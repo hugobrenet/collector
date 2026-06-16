@@ -2,4 +2,39 @@
 
 <h2>{{=T("AI LLM configuration")}}</h2>
 
-{{=form}}
+{{if no_deployments:}}
+  <p>{{=T("No AI model is available. Contact an administrator.")}}</p>
+  {{if is_manager:}}
+    <p><a href="{{=URL('ai', 'deployments')}}">{{=T("Manage AI LLM deployments")}}</a></p>
+  {{pass}}
+{{else:}}
+  {{if is_manager:}}
+    <p><a href="{{=URL('ai', 'deployments')}}">{{=T("Manage AI LLM deployments")}}</a></p>
+  {{pass}}
+  {{=form}}
+  <script type="text/javascript">
+    (function() {
+      var authModes = {{=XML(deployment_auth_modes_json)}};
+      var select = document.getElementById("no_table_deployment_id");
+      var apiKey = document.getElementById("no_table_api_key");
+      if (!select || !apiKey) {
+        return;
+      }
+      var row = document.getElementById("no_table_api_key__row");
+      if (!row) {
+        row = apiKey.parentNode;
+        while (row && row.tagName && row.tagName.toLowerCase() !== "tr") {
+          row = row.parentNode;
+        }
+      }
+      function refresh() {
+        var mode = authModes[select.value];
+        if (row) {
+          row.style.display = mode === "user_api_key" ? "" : "none";
+        }
+      }
+      select.onchange = refresh;
+      refresh();
+    })();
+  </script>
+{{pass}}

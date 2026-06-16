@@ -327,6 +327,7 @@
 			"filters": "Filters",
 			"filtersets": "Filtersets",
 			"forms": "Forms",
+			"ai_llm_admin": "AI Deployments",
 			"gids": "Group ids",
 			"log": "Collector log",
 			"charts": "Charts",
@@ -1498,6 +1499,10 @@
 			"forms": {
 				"title": "Forms",
 				"text": "Design new workflows and orchestrations"
+			},
+			"ai_llm_admin": {
+				"title": "AI Deployments",
+				"text": "Manage admin-approved AI LLM deployments"
 			},
 			"metrics": {
 				"title": "Metrics",

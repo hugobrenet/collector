@@ -7,13 +7,17 @@ from applications.init.modules.ai_gateway import (
     ai_gateway_chat_stream,
 )
 from applications.init.modules.ai_llm_config import (
-    DEFAULT_COMPLETION_TOKEN_PARAMETER,
-    DEFAULT_MAX_TOOL_ITERATIONS,
-    DEFAULT_TOOL_RESULT_MAX_CHARS,
+    ai_llm_auth_mode_choices,
+    ai_llm_completion_token_parameter_choices,
     ai_llm_decrypt_api_key,
+    ai_llm_deployment_choices,
+    ai_llm_deployment_defaults,
+    ai_llm_deployment_row,
+    ai_llm_enabled_deployment_rows,
     ai_llm_form_defaults,
     ai_llm_mask_api_key,
-    ai_llm_model_choices,
+    ai_llm_provider_choices,
+    ai_llm_store_deployment_values,
     ai_llm_store_values,
     ai_llm_user_row,
 )
@@ -210,19 +214,21 @@ def _insert_chat_message(
     return db._adapter.cursor.lastrowid
 
 
-def _model_select_widget(field, value, model_options):
+def _select_widget(field, value, options):
     field_id = "%s_%s" % (getattr(field, "_tablename", "no_table"), field.name)
-    options = []
-    active_values = [item[0] for item in model_options]
+    options = [(str(item[0]), item[1]) for item in options]
+    active_values = [item[0] for item in options]
+    value = str(value) if value is not None else ""
     if value not in active_values and active_values:
         value = active_values[0]
 
-    for model, label in model_options:
-        attrs = {"_value": model}
-        if model == value:
+    tags = []
+    for option_value, label in options:
+        attrs = {"_value": option_value}
+        if option_value == value:
             attrs["_selected"] = "selected"
-        options.append(OPTION(label, **attrs))
-    return SELECT(*options, _name=field.name, _id=field_id)
+        tags.append(OPTION(label, **attrs))
+    return SELECT(*tags, _name=field.name, _id=field_id)
 
 
 def _api_key_password_widget(field, value):
@@ -235,6 +241,11 @@ def _api_key_password_widget(field, value):
       _autocomplete="new-password",
       _spellcheck="false",
     )
+
+
+def _manager_or_403():
+    if "Manager" not in user_groups():
+        raise HTTP(403, "Manager privilege required")
 
 
 class _PersistingSseStream(object):
@@ -418,8 +429,25 @@ def conversations():
 
 @auth.requires_login()
 def config():
+    deployment_rows = list(ai_llm_enabled_deployment_rows(db))
+    deployment_options = ai_llm_deployment_choices(deployment_rows)
     row = ai_llm_user_row(db, auth.user_id)
-    defaults = ai_llm_form_defaults(row)
+
+    if not deployment_rows:
+        return dict(
+          form=None,
+          api_key_configured=False,
+          no_deployments=True,
+          is_manager="Manager" in user_groups(),
+          deployment_auth_modes_json="{}",
+        )
+
+    defaults = ai_llm_form_defaults(row, deployment_rows)
+    selected_deployment = ai_llm_deployment_row(
+      db,
+      defaults["deployment_id"],
+      enabled_only=True,
+    ) or deployment_rows[0]
     current_api_key = row.api_key if row is not None else None
     try:
         visible_api_key = ai_llm_decrypt_api_key(current_api_key)
@@ -427,22 +455,24 @@ def config():
         visible_api_key = ""
         response.flash = T(str(exc))
     masked_api_key = ai_llm_mask_api_key(visible_api_key)
-    model_options = ai_llm_model_choices()
-    model_values = [item[0] for item in model_options]
-    model_labels = [item[1] for item in model_options]
+    deployment_values = [item[0] for item in deployment_options]
+    deployment_labels = [item[1] for item in deployment_options]
 
     form = SQLFORM.factory(
       Field(
-        "model",
-        "string",
-        length=128,
-        default=defaults["model"],
-        label=T("Model"),
-        requires=IS_IN_SET(model_values, labels=model_labels, zero=None),
-        widget=lambda field, value: _model_select_widget(
+        "deployment_id",
+        "integer",
+        default=defaults["deployment_id"],
+        label=T("LLM deployment"),
+        requires=IS_IN_SET(
+          deployment_values,
+          labels=deployment_labels,
+          zero=None,
+        ),
+        widget=lambda field, value: _select_widget(
           field,
           value,
-          model_options,
+          deployment_options,
         ),
       ),
       Field(
@@ -461,13 +491,9 @@ def config():
             form.vars.api_key = ""
         form.vars.temperature = None
         form.vars.max_tokens = None
-        form.vars.completion_token_parameter = (
-          DEFAULT_COMPLETION_TOKEN_PARAMETER
-        )
-        form.vars.max_tool_iterations = DEFAULT_MAX_TOOL_ITERATIONS
-        form.vars.tool_result_max_chars = DEFAULT_TOOL_RESULT_MAX_CHARS
         try:
             values = ai_llm_store_values(
+              db,
               form.vars,
               current_api_key=current_api_key,
             )
@@ -483,7 +509,227 @@ def config():
             session.flash = T("Saved")
             redirect(URL("ai", "config"))
 
+    deployment_auth_modes = dict(
+      (str(deployment.id), deployment.auth_mode)
+      for deployment in deployment_rows
+    )
     return dict(
       form=form,
       api_key_configured=bool(row is not None and row.api_key),
+      no_deployments=False,
+      is_manager="Manager" in user_groups(),
+      deployment_auth_modes_json=json.dumps(deployment_auth_modes),
+      selected_auth_mode=selected_deployment.auth_mode,
+    )
+
+
+@auth.requires_login()
+def deployment_delete():
+    _manager_or_403()
+    if _method() != "POST":
+        raise HTTP(405, "Method not allowed")
+    if not request.args:
+        raise HTTP(404, "AI LLM deployment not found")
+
+    row = ai_llm_deployment_row(db, request.args[0], enabled_only=False)
+    if row is None:
+        raise HTTP(404, "AI LLM deployment not found")
+
+    user_refs = db(
+      db.ai_llm_user_config.deployment_id == row.id
+    ).count()
+    if user_refs:
+        db(db.ai_llm_user_config.deployment_id == row.id).update(
+          deployment_id=None,
+          provider=None,
+          base_url=None,
+          model=None,
+          api_key=None,
+          updated=request.now,
+        )
+
+    row.delete_record()
+    if user_refs:
+        session.flash = T("Deleted. User AI LLM configurations using this deployment were reset.")
+    else:
+        session.flash = T("Deleted")
+    redirect(URL("ai", "deployments"))
+
+
+@auth.requires_login()
+def deployments():
+    _manager_or_403()
+    row = None
+    if request.args:
+        row = ai_llm_deployment_row(db, request.args[0], enabled_only=False)
+        if row is None:
+            raise HTTP(404, "AI LLM deployment not found")
+
+    defaults = ai_llm_deployment_defaults(row)
+    current_api_key = row.api_key if row is not None else None
+    try:
+        visible_api_key = ai_llm_decrypt_api_key(current_api_key)
+    except RuntimeError as exc:
+        visible_api_key = ""
+        response.flash = T(str(exc))
+    masked_api_key = ai_llm_mask_api_key(visible_api_key)
+
+    provider_options = ai_llm_provider_choices()
+    auth_mode_options = ai_llm_auth_mode_choices()
+    completion_token_options = ai_llm_completion_token_parameter_choices()
+
+    form = SQLFORM.factory(
+      Field(
+        "name",
+        "string",
+        length=128,
+        default=defaults["name"],
+        label=T("Name"),
+        requires=IS_NOT_EMPTY(),
+      ),
+      Field(
+        "label",
+        "string",
+        length=255,
+        default=defaults["label"],
+        label=T("Label"),
+        requires=IS_NOT_EMPTY(),
+      ),
+      Field(
+        "provider_adapter",
+        "string",
+        length=64,
+        default=defaults["provider_adapter"],
+        label=T("Provider adapter"),
+        requires=IS_IN_SET(
+          [item[0] for item in provider_options],
+          labels=[item[1] for item in provider_options],
+          zero=None,
+        ),
+        widget=lambda field, value: _select_widget(
+          field,
+          value,
+          provider_options,
+        ),
+      ),
+      Field(
+        "base_url",
+        "string",
+        length=512,
+        default=defaults["base_url"],
+        label=T("Base URL"),
+        requires=IS_NOT_EMPTY(),
+      ),
+      Field(
+        "model",
+        "string",
+        length=128,
+        default=defaults["model"],
+        label=T("Model"),
+        requires=IS_NOT_EMPTY(),
+      ),
+      Field(
+        "auth_mode",
+        "string",
+        length=32,
+        default=defaults["auth_mode"],
+        label=T("Auth mode"),
+        requires=IS_IN_SET(
+          [item[0] for item in auth_mode_options],
+          labels=[item[1] for item in auth_mode_options],
+          zero=None,
+        ),
+        widget=lambda field, value: _select_widget(
+          field,
+          value,
+          auth_mode_options,
+        ),
+      ),
+      Field(
+        "api_key",
+        "password",
+        default=masked_api_key,
+        label=T("Shared API key"),
+        requires=IS_EMPTY_OR(IS_LENGTH(4096)),
+        widget=_api_key_password_widget,
+      ),
+      Field(
+        "enabled",
+        "boolean",
+        default=defaults["enabled"],
+        label=T("Enabled"),
+      ),
+      Field(
+        "sort_order",
+        "integer",
+        default=defaults["sort_order"],
+        label=T("Sort order"),
+      ),
+      Field(
+        "completion_token_parameter",
+        "string",
+        length=64,
+        default=defaults["completion_token_parameter"],
+        label=T("Completion token parameter"),
+        requires=IS_IN_SET(
+          [item[0] for item in completion_token_options],
+          labels=[item[1] for item in completion_token_options],
+          zero=None,
+        ),
+        widget=lambda field, value: _select_widget(
+          field,
+          value,
+          completion_token_options,
+        ),
+      ),
+      Field(
+        "max_tool_iterations",
+        "integer",
+        default=defaults["max_tool_iterations"],
+        label=T("Max tool iterations"),
+      ),
+      Field(
+        "tool_result_max_chars",
+        "integer",
+        default=defaults["tool_result_max_chars"],
+        label=T("Tool result max chars"),
+      ),
+      submit_button=T("Save"),
+    )
+
+    if form.process().accepted:
+        if form.vars.api_key == masked_api_key:
+            form.vars.api_key = ""
+        try:
+            values = ai_llm_store_deployment_values(
+              form.vars,
+              current_api_key=current_api_key,
+            )
+            existing = db(
+              db.ai_llm_deployment.name == values["name"]
+            ).select(db.ai_llm_deployment.ALL, limitby=(0, 1)).first()
+            if existing is not None and (row is None or existing.id != row.id):
+                raise RuntimeError("An AI LLM deployment with this name already exists")
+        except RuntimeError as exc:
+            response.flash = T(str(exc))
+        else:
+            values["updated"] = request.now
+            if row is None:
+                values["created"] = request.now
+                db.ai_llm_deployment.insert(**values)
+            else:
+                row.update_record(**values)
+            session.flash = T("Saved")
+            redirect(URL("ai", "deployments"))
+
+    deployments = db(db.ai_llm_deployment.id > 0).select(
+      db.ai_llm_deployment.ALL,
+      orderby=(db.ai_llm_deployment.sort_order|db.ai_llm_deployment.label),
+    )
+    auth_mode_visibility_json = json.dumps({"shared_api_key": True})
+    return dict(
+      form=form,
+      deployments=deployments,
+      editing=row,
+      auth_mode_visibility_json=auth_mode_visibility_json,
     )

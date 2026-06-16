@@ -351,6 +351,13 @@ var menu_data = {
                   "fn": "table_forms"
 		},
 		{
+		  "title" : "ai_llm_admin",
+		  "class" : "fa-cogs",
+		  "id" : "adm-ai-llm",
+		  "link" : "/init/ai/deployments",
+		  "secure" : ["Manager"]
+		},
+		{
 		  "title" : "metrics",
 		  "class" : "metric16",
 		  "id" : "adm-metrics",

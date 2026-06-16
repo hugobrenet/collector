@@ -1,0 +1,72 @@
+{{extend 'layout.html'}}
+
+<h2>{{=T("AI LLM deployments")}}</h2>
+
+{{if editing is not None:}}
+  <p><a href="{{=URL('ai', 'deployments')}}">{{=T("New deployment")}}</a></p>
+{{pass}}
+
+<h3>{{=T("Deployment")}}</h3>
+{{=form}}
+
+<script type="text/javascript">
+  (function() {
+    var select = document.getElementById("no_table_auth_mode");
+    var apiKey = document.getElementById("no_table_api_key");
+    if (!select || !apiKey) {
+      return;
+    }
+    var row = document.getElementById("no_table_api_key__row");
+    if (!row) {
+      row = apiKey.parentNode;
+      while (row && row.tagName && row.tagName.toLowerCase() !== "tr") {
+        row = row.parentNode;
+      }
+    }
+    function refresh() {
+      if (row) {
+        row.style.display = select.value === "shared_api_key" ? "" : "none";
+      }
+    }
+    select.onchange = refresh;
+    refresh();
+  })();
+</script>
+
+<h3>{{=T("Existing deployments")}}</h3>
+{{if len(deployments) == 0:}}
+  <p>{{=T("No AI LLM deployment is configured.")}}</p>
+{{else:}}
+  <table>
+    <thead>
+      <tr>
+        <th>{{=T("Name")}}</th>
+        <th>{{=T("Label")}}</th>
+        <th>{{=T("Provider")}}</th>
+        <th>{{=T("Model")}}</th>
+        <th>{{=T("Auth mode")}}</th>
+        <th>{{=T("Enabled")}}</th>
+        <th>{{=T("Action")}}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{for deployment in deployments:}}
+      <tr>
+        <td>{{=deployment.name}}</td>
+        <td>{{=deployment.label}}</td>
+        <td>{{=deployment.provider_adapter}}</td>
+        <td>{{=deployment.model}}</td>
+        <td>{{=deployment.auth_mode}}</td>
+        {{deployment_enabled = str(deployment.enabled).lower() in ("1", "true", "t", "yes", "on")}}
+        <td>{{=T("yes") if deployment_enabled else T("no")}}</td>
+        <td>
+          <a href="{{=URL('ai', 'deployments', args=[deployment.id])}}">{{=T("Edit")}}</a>
+          <form method="post" action="{{=URL('ai', 'deployment_delete', args=[deployment.id])}}" style="display:inline" onsubmit="return confirm('{{=T("Delete this AI deployment?")}}');">
+            <button type="submit">{{=T("Delete")}}</button>
+          </form>
+        </td>
+      </tr>
+    {{pass}}
+    </tbody>
+  </table>
+{{pass}}

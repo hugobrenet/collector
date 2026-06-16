@@ -327,6 +327,7 @@
 			"filters": "Filtres",
 			"filtersets": "Jeux de filtres",
 			"forms": "Formulaires",
+			"ai_llm_admin": "Déploiements IA",
 			"gids": "Ids de groupe",
 			"log": "Journal du collecteur",
 			"charts": "Courbes",
@@ -1496,6 +1497,10 @@
 			"forms" : {
 				"title" : "Formulaires",
 				"text" : "Modélisation des demandes et orchestrations"
+			},
+			"ai_llm_admin" : {
+				"title" : "Déploiements IA",
+				"text" : "Gérer les deployments LLM approuvés par les administrateurs"
 			},
 			"metrics" : {
 				"title" : "Métriques",
