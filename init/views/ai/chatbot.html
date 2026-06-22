@@ -1036,15 +1036,53 @@
 
 	function errorText(xhr) {
 		var fallback = "{{=T('The AI request failed.')}}";
-		if (!xhr || !xhr.responseText) {
+		var responseText;
+		var statusCode;
+		var statusText;
+		if (!xhr) {
 			return fallback;
 		}
+		responseText = xhr.responseText || "";
+		statusCode = xhr.status;
+		statusText = xhr.statusText || "";
+		if (!responseText) {
+			return httpErrorText(statusCode, statusText, fallback);
+		}
 		try {
-			var data = JSON.parse(xhr.responseText);
+			var data = JSON.parse(responseText);
 			return valueText(data.error || data.detail || data) || fallback;
 		} catch (e) {
-			return xhr.responseText || fallback;
+			return normalizePlainErrorText(responseText, statusCode, statusText, fallback);
 		}
+	}
+
+	function normalizePlainErrorText(text, statusCode, statusText, fallback) {
+		var lower = String(text || "").toLowerCase();
+		if (
+			statusCode == 504 ||
+			lower.indexOf("gateway time-out") != -1 ||
+			lower.indexOf("gateway timeout") != -1
+		) {
+			return "{{=T('The AI assistant timed out before completing the response. Retry with a narrower question or try again later.')}}";
+		}
+		if (looksLikeHtml(text)) {
+			return httpErrorText(statusCode, statusText, fallback);
+		}
+		return text || fallback;
+	}
+
+	function looksLikeHtml(text) {
+		return /^\s*</.test(String(text || ""));
+	}
+
+	function httpErrorText(statusCode, statusText, fallback) {
+		if (statusCode) {
+			return "{{=T('The AI request failed with HTTP status')}} " +
+				statusCode +
+				(statusText ? " " + statusText : "") +
+				".";
+		}
+		return fallback;
 	}
 
 	function titleFromMessage(message) {
@@ -1134,7 +1172,11 @@
 		}).then(function(response) {
 			if (!response.ok) {
 				return response.text().then(function(text) {
-					deferred.reject({responseText: text});
+					deferred.reject({
+						responseText: text,
+						status: response.status,
+						statusText: response.statusText
+					});
 				});
 			}
 			var reader = response.body.getReader();

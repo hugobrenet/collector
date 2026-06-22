@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 
 try:
     from urllib2 import Request, urlopen, HTTPError, URLError
@@ -222,6 +223,35 @@ def _read_error_body(exc):
     try:
         return json.loads(body)
     except Exception:
-        if isinstance(body, bytes):
-            return body.decode("utf-8", "replace")
-        return body
+        return _human_error_body(body, exc.code)
+
+
+def _human_error_body(body, status_code):
+    if isinstance(body, bytes):
+        text = body.decode("utf-8", "replace")
+    else:
+        text = body
+
+    if not isinstance(text, string_types):
+        return "AI gateway request failed with HTTP %s" % status_code
+
+    lower_text = text.lower()
+    if status_code == 504 or "gateway time-out" in lower_text or "gateway timeout" in lower_text:
+        return (
+          "AI gateway request timed out before the assistant completed. "
+          "The model may still be processing the request."
+        )
+
+    if "<html" not in lower_text and "<!doctype html" not in lower_text:
+        return text
+
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+    if title_match:
+        title = re.sub(r"\s+", " ", title_match.group(1)).strip()
+        if title:
+            return "AI gateway request failed with HTTP %s: %s" % (
+              status_code,
+              title,
+            )
+
+    return "AI gateway request failed with HTTP %s" % status_code
